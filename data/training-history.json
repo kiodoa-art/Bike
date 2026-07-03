@@ -1,6 +1,22 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-07-03T20:30:00+02:00",
+  "updatedAt": "2026-07-03T22:31:22+02:00",
   "source": "Garmin FIT files analysed in ChatGPT",
-  "activities": []
+  "activities": [
+    {
+      "id": "23467751257",
+      "date": "2026-07-03",
+      "startTime": "2026-07-03T19:04:37+02:00",
+      "sport": "indoor_cycling",
+      "durationSeconds": 1833,
+      "averagePower": 112,
+      "maxPower": 534,
+      "normalizedPower": 122,
+      "averageCadence": 83,
+      "averageHeartRate": 137,
+      "maxHeartRate": 156,
+      "distanceKm": 14.98,
+      "notes": "Indoor hometrainer. 30 min rolig/genopstartstur."
+    }
+  ]
 }
