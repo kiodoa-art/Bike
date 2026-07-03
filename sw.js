@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v4-clean-dashboard';
+const CACHE_NAME = 'kickr-live-v5-studio-comparison';
 const ASSETS = [
   './',
   './index.html',

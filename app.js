@@ -9,6 +9,8 @@ const UUID = {
   cscMeasurement: 0x2a5b,
   fitnessMachineService: 0x1826,
   indoorBikeData: 0x2ad2,
+  heartRateService: 0x180d,
+  heartRateMeasurement: 0x2a37,
 };
 
 
@@ -46,7 +48,6 @@ const els = {
   averagePower: document.querySelector('#averagePower'),
   maxPower: document.querySelector('#maxPower'),
   elapsedTime: document.querySelector('#elapsedTime'),
-  powerBarFill: document.querySelector('#powerBarFill'),
   powerHint: document.querySelector('#powerHint'),
   dataSource: document.querySelector('#dataSource'),
   debugLog: document.querySelector('#debugLog'),
@@ -65,6 +66,25 @@ const els = {
   spotifyProgressFill: document.querySelector('#spotifyProgressFill'),
   spotifyElapsed: document.querySelector('#spotifyElapsed'),
   spotifyDuration: document.querySelector('#spotifyDuration'),
+  heartRateConnectButton: document.querySelector('#heartRateConnectButton'),
+  heartRateDisconnectButton: document.querySelector('#heartRateDisconnectButton'),
+  heartRateValue: document.querySelector('#heartRateValue'),
+  heartRateState: document.querySelector('#heartRateState'),
+  cadenceRing: document.querySelector('#cadenceRing'),
+  heartRateRing: document.querySelector('#heartRateRing'),
+  powerRing: document.querySelector('#powerRing'),
+  powerZone: document.querySelector('#powerZone'),
+  chartAverage: document.querySelector('#chartAverage'),
+  powerChartLine: document.querySelector('#powerChartLine'),
+  powerChartArea: document.querySelector('#powerChartArea'),
+  powerChartDot: document.querySelector('#powerChartDot'),
+  timeProgress: document.querySelector('#timeProgress'),
+  lastRideDelta: document.querySelector('#lastRideDelta'),
+  thirtyDayDelta: document.querySelector('#thirtyDayDelta'),
+  trendText: document.querySelector('#trendText'),
+  lastRideAverageInput: document.querySelector('#lastRideAverageInput'),
+  thirtyDayAverageInput: document.querySelector('#thirtyDayAverageInput'),
+  saveReferenceButton: document.querySelector('#saveReferenceButton'),
 };
 
 let bluetoothDevice = null;
@@ -81,6 +101,13 @@ let spotifyProgressTimer = null;
 let spotifyPolling = false;
 let spotifyPlayback = null;
 let spotifyRefreshPromise = null;
+let heartRateDevice = null;
+let heartRateCharacteristic = null;
+let heartRateReconnectCancelled = false;
+let lastHeartRatePacketAt = 0;
+let lastChartRenderAt = 0;
+
+const REFERENCE_STORAGE_KEY = 'kickrTrainingReferenceV1';
 
 const crankState = {
   power: { revolutions: null, eventTime: null },
@@ -95,7 +122,10 @@ const session = {
   maxPower: 0,
   currentPower: null,
   currentCadence: null,
+  currentHeartRate: null,
 };
+
+let trainingReference = loadTrainingReference();
 
 function log(message) {
   const stamp = new Date().toLocaleTimeString('da-DK', { hour12: false });
@@ -107,6 +137,131 @@ function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add('show');
   toastTimer = setTimeout(() => els.toast.classList.remove('show'), 3400);
+}
+
+function loadTrainingReference() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REFERENCE_STORAGE_KEY) || '{}');
+    return {
+      lastRideAverage: Number(saved.lastRideAverage) || null,
+      thirtyDayAverage: Number(saved.thirtyDayAverage) || null,
+    };
+  } catch (_) {
+    return { lastRideAverage: null, thirtyDayAverage: null };
+  }
+}
+
+function populateReferenceInputs() {
+  if (els.lastRideAverageInput) els.lastRideAverageInput.value = trainingReference.lastRideAverage ?? '';
+  if (els.thirtyDayAverageInput) els.thirtyDayAverageInput.value = trainingReference.thirtyDayAverage ?? '';
+}
+
+function saveTrainingReference() {
+  const parseValue = input => {
+    const value = Number(input?.value);
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+  };
+
+  trainingReference = {
+    lastRideAverage: parseValue(els.lastRideAverageInput),
+    thirtyDayAverage: parseValue(els.thirtyDayAverageInput),
+  };
+  localStorage.setItem(REFERENCE_STORAGE_KEY, JSON.stringify(trainingReference));
+  updateComparisons();
+  showToast('Referenceværdierne er gemt');
+}
+
+function formatDelta(current, reference) {
+  if (!Number.isFinite(current) || !Number.isFinite(reference) || reference <= 0) return null;
+  const delta = Math.round(current - reference);
+  return { delta, text: `${delta > 0 ? '+' : ''}${delta} W` };
+}
+
+function renderDelta(element, result) {
+  if (!element) return;
+  element.textContent = result?.text || '—';
+  element.classList.toggle('negative', Boolean(result && result.delta < 0));
+}
+
+function updateComparisons() {
+  const average = session.powerCount ? session.powerSum / session.powerCount : null;
+  const lastRide = formatDelta(average, trainingReference.lastRideAverage);
+  const thirtyDay = formatDelta(average, trainingReference.thirtyDayAverage);
+  renderDelta(els.lastRideDelta, lastRide);
+  renderDelta(els.thirtyDayDelta, thirtyDay);
+
+  if (!trainingReference.lastRideAverage && !trainingReference.thirtyDayAverage) {
+    els.trendText.textContent = 'Tilføj referenceværdier i indstillinger';
+    els.trendText.className = 'trend-line neutral';
+    return;
+  }
+  if (!session.powerCount) {
+    els.trendText.textContent = 'Sammenligningen starter, når du træder';
+    els.trendText.className = 'trend-line neutral';
+    return;
+  }
+
+  const now = Date.now();
+  const recent = session.powerSamples.filter(sample => now - sample.time <= 15000);
+  const previous = session.powerSamples.filter(sample => now - sample.time > 15000 && now - sample.time <= 30000);
+  const recentAverage = recent.length ? recent.reduce((sum, sample) => sum + sample.power, 0) / recent.length : null;
+  const previousAverage = previous.length ? previous.reduce((sum, sample) => sum + sample.power, 0) / previous.length : null;
+  const change = recentAverage !== null && previousAverage !== null ? recentAverage - previousAverage : 0;
+
+  if (change > 5) {
+    els.trendText.textContent = '↗ Effekten stiger nu';
+    els.trendText.className = 'trend-line';
+  } else if (change < -5) {
+    els.trendText.textContent = '↘ Effekten falder nu';
+    els.trendText.className = 'trend-line down';
+  } else {
+    els.trendText.textContent = '→ Stabil effekt lige nu';
+    els.trendText.className = 'trend-line neutral';
+  }
+}
+
+function setRing(element, value, maximum) {
+  if (!element) return;
+  const degrees = Math.max(0, Math.min(360, (Number(value) || 0) / maximum * 360));
+  element.parentElement?.style.setProperty('--value', `${degrees}deg`);
+}
+
+function updatePowerChart(force = false) {
+  const now = Date.now();
+  if (!force && now - lastChartRenderAt < 900) return;
+  lastChartRenderAt = now;
+
+  const samples = session.powerSamples.filter(sample => now - sample.time <= 600000);
+  if (!samples.length) {
+    els.powerChartLine?.setAttribute('d', '');
+    els.powerChartArea?.setAttribute('d', '');
+    if (els.powerChartDot) els.powerChartDot.hidden = true;
+    if (els.chartAverage) els.chartAverage.textContent = '--';
+    return;
+  }
+
+  const width = 800;
+  const height = 200;
+  const maxPower = Math.max(350, ...samples.map(sample => sample.power));
+  const firstTime = Math.max(now - 600000, samples[0].time);
+  const span = Math.max(1, now - firstTime);
+  const points = samples.map(sample => {
+    const x = ((sample.time - firstTime) / span) * width;
+    const y = height - Math.min(height, (sample.power / maxPower) * (height - 12));
+    return [x, y];
+  });
+  const line = points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const area = `${line} L${points.at(-1)[0].toFixed(1)},${height} L${points[0][0].toFixed(1)},${height} Z`;
+  els.powerChartLine?.setAttribute('d', line);
+  els.powerChartArea?.setAttribute('d', area);
+  if (els.powerChartDot) {
+    els.powerChartDot.hidden = false;
+    els.powerChartDot.setAttribute('cx', points.at(-1)[0].toFixed(1));
+    els.powerChartDot.setAttribute('cy', points.at(-1)[1].toFixed(1));
+  }
+  if (els.chartAverage) {
+    els.chartAverage.textContent = String(Math.round(samples.reduce((sum, sample) => sum + sample.power, 0) / samples.length));
+  }
 }
 
 function setStatus(state, title, subtitle) {
@@ -135,7 +290,7 @@ function updatePower(power) {
   ensureSessionStarted(cleanPower, session.currentCadence);
 
   session.powerSamples.push({ time: now, power: cleanPower });
-  session.powerSamples = session.powerSamples.filter(sample => now - sample.time <= 30000);
+  session.powerSamples = session.powerSamples.filter(sample => now - sample.time <= 600000);
   session.powerSum += cleanPower;
   session.powerCount += 1;
   session.maxPower = Math.max(session.maxPower, cleanPower);
@@ -149,8 +304,11 @@ function updatePower(power) {
   els.power3s.textContent = String(average3s);
   els.averagePower.textContent = String(Math.round(session.powerSum / session.powerCount));
   els.maxPower.textContent = String(session.maxPower);
-  els.powerBarFill.style.width = `${Math.min(100, (cleanPower / 600) * 100)}%`;
+  setRing(els.powerRing, cleanPower, 500);
   els.powerHint.textContent = cleanPower === 0 ? 'Ingen belastning registreret' : powerBand(cleanPower);
+  els.powerZone.textContent = powerBand(cleanPower);
+  updateComparisons();
+  updatePowerChart();
 }
 
 function updateCadence(cadence) {
@@ -160,6 +318,17 @@ function updateCadence(cadence) {
   lastCadencePacketAt = Date.now();
   ensureSessionStarted(session.currentPower, cleanCadence);
   els.cadenceValue.textContent = String(cleanCadence);
+  setRing(els.cadenceRing, cleanCadence, 120);
+}
+
+function updateHeartRate(heartRate) {
+  if (!Number.isFinite(heartRate)) return;
+  const cleanHeartRate = Math.max(0, Math.min(240, Math.round(heartRate)));
+  session.currentHeartRate = cleanHeartRate;
+  lastHeartRatePacketAt = Date.now();
+  els.heartRateValue.textContent = String(cleanHeartRate);
+  els.heartRateState.textContent = heartRateDevice?.name || 'Pulsmåler forbundet';
+  setRing(els.heartRateRing, cleanHeartRate, 200);
 }
 
 function powerBand(power) {
@@ -181,15 +350,23 @@ function updateElapsed() {
     els.elapsedTime.textContent = hours > 0
       ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
       : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    if (els.timeProgress) els.timeProgress.style.width = `${Math.min(100, (totalSeconds / 3600) * 100)}%`;
   }
 
   if (session.currentCadence !== null && Date.now() - lastCadencePacketAt > 2800) {
     session.currentCadence = 0;
     els.cadenceValue.textContent = '0';
+    setRing(els.cadenceRing, 0, 120);
+  }
+  if (session.currentHeartRate !== null && Date.now() - lastHeartRatePacketAt > 6000) {
+    session.currentHeartRate = null;
+    els.heartRateValue.textContent = '--';
+    els.heartRateState.textContent = heartRateDevice?.gatt?.connected ? 'Venter på pulsdata' : 'Pulsmåler ikke forbundet';
+    setRing(els.heartRateRing, 0, 200);
   }
 }
 
-function resetSession() {
+function resetSession(showMessage = true) {
   session.startedAt = null;
   session.powerSamples = [];
   session.powerSum = 0;
@@ -197,6 +374,7 @@ function resetSession() {
   session.maxPower = 0;
   session.currentPower = null;
   session.currentCadence = null;
+  session.currentHeartRate = null;
   crankState.power.revolutions = null;
   crankState.power.eventTime = null;
   crankState.csc.revolutions = null;
@@ -207,9 +385,16 @@ function resetSession() {
   els.averagePower.textContent = '--';
   els.maxPower.textContent = '--';
   els.elapsedTime.textContent = '00:00';
-  els.powerBarFill.style.width = '0%';
   els.powerHint.textContent = 'Venter på data';
-  showToast('Turdata er nulstillet');
+  els.powerZone.textContent = 'Venter på data';
+  els.heartRateValue.textContent = '--';
+  setRing(els.cadenceRing, 0, 120);
+  setRing(els.heartRateRing, 0, 200);
+  setRing(els.powerRing, 0, 500);
+  if (els.timeProgress) els.timeProgress.style.width = '0%';
+  updateComparisons();
+  updatePowerChart(true);
+  if (showMessage) showToast('Turdata er nulstillet');
 }
 
 function readUint24LE(view, offset) {
@@ -302,7 +487,10 @@ function handleIndoorBikeData(event) {
 
   if (flags & (1 << 7)) offset += 2; // Average power
   if (flags & (1 << 8)) offset += 5; // Expended energy
-  if (flags & (1 << 9)) offset += 1; // Heart rate
+  if (flags & (1 << 9)) {
+    if (offset + 1 <= view.byteLength) updateHeartRate(view.getUint8(offset));
+    offset += 1;
+  } // Heart rate
   if (flags & (1 << 10)) offset += 1; // MET
   if (flags & (1 << 11)) offset += 2; // Elapsed time
   if (flags & (1 << 12)) offset += 2; // Remaining time
@@ -442,6 +630,78 @@ async function disconnect() {
   await releaseWakeLock();
 }
 
+function handleHeartRateMeasurement(event) {
+  const view = event.target.value;
+  if (!view || view.byteLength < 2) return;
+  const flags = view.getUint8(0);
+  const heartRate = flags & 0x01 ? view.getUint16(1, true) : view.getUint8(1);
+  updateHeartRate(heartRate);
+}
+
+async function connectHeartRate() {
+  if (!navigator.bluetooth) throw new Error('Web Bluetooth findes ikke i denne browser.');
+  heartRateReconnectCancelled = false;
+  els.heartRateState.textContent = 'Vælg pulsmåleren';
+  heartRateDevice = await navigator.bluetooth.requestDevice({
+    filters: [{ services: [UUID.heartRateService] }],
+    optionalServices: [UUID.heartRateService],
+  });
+  heartRateDevice.addEventListener('gattserverdisconnected', handleHeartRateDisconnected);
+  await connectHeartRateGatt();
+}
+
+async function connectHeartRateGatt() {
+  if (!heartRateDevice) throw new Error('Ingen pulsmåler er valgt.');
+  els.heartRateState.textContent = 'Forbinder pulsmåler';
+  const server = heartRateDevice.gatt.connected ? heartRateDevice.gatt : await heartRateDevice.gatt.connect();
+  const service = await server.getPrimaryService(UUID.heartRateService);
+  heartRateCharacteristic = await service.getCharacteristic(UUID.heartRateMeasurement);
+  heartRateCharacteristic.addEventListener('characteristicvaluechanged', handleHeartRateMeasurement);
+  await heartRateCharacteristic.startNotifications();
+  els.heartRateState.textContent = heartRateDevice.name || 'Pulsmåler forbundet';
+  els.heartRateConnectButton.hidden = true;
+  els.heartRateDisconnectButton.hidden = false;
+  log(`Pulsmåler forbundet: ${heartRateDevice.name || 'ukendt enhed'}.`);
+  showToast('Pulsmåleren er forbundet');
+}
+
+async function handleHeartRateDisconnected() {
+  if (heartRateReconnectCancelled || !heartRateDevice) return;
+  els.heartRateState.textContent = 'Pulsen blev afbrudt · prøver igen';
+  for (const delay of [1000, 2000, 4000, 8000]) {
+    if (heartRateReconnectCancelled) return;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    try {
+      await connectHeartRateGatt();
+      return;
+    } catch (error) {
+      log(`Genforbindelse til puls mislykkedes: ${error.message}`);
+    }
+  }
+  els.heartRateConnectButton.hidden = false;
+  els.heartRateDisconnectButton.hidden = true;
+  els.heartRateState.textContent = 'Pulsmåler ikke forbundet';
+}
+
+async function disconnectHeartRate() {
+  heartRateReconnectCancelled = true;
+  try {
+    heartRateCharacteristic?.removeEventListener('characteristicvaluechanged', handleHeartRateMeasurement);
+    await heartRateCharacteristic?.stopNotifications();
+  } catch (_) {
+    // Enheden kan allerede være afbrudt.
+  }
+  if (heartRateDevice?.gatt?.connected) heartRateDevice.gatt.disconnect();
+  heartRateCharacteristic = null;
+  session.currentHeartRate = null;
+  els.heartRateValue.textContent = '--';
+  els.heartRateState.textContent = 'Pulsmåler ikke forbundet';
+  els.heartRateConnectButton.hidden = false;
+  els.heartRateDisconnectButton.hidden = true;
+  setRing(els.heartRateRing, 0, 200);
+  log('Pulsmåleren blev afbrudt manuelt.');
+}
+
 async function requestWakeLock() {
   if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
   try {
@@ -465,9 +725,14 @@ function startDemo() {
   }
 
   let phase = 0;
-  resetSession();
+  resetSession(false);
   els.demoButton.textContent = 'Stop testvisning';
   els.dataSource.textContent = 'Datakilde: testdata';
+  if (!trainingReference.lastRideAverage && !trainingReference.thirtyDayAverage) {
+    trainingReference = { lastRideAverage: 206, thirtyDayAverage: 210 };
+    populateReferenceInputs();
+  }
+  els.heartRateState.textContent = 'Simuleret pulsmåler';
   setStatus('connected', 'Testvisning', 'Simulerede tal – ikke KICKR-data');
   log('Testvisning startet.');
 
@@ -475,8 +740,10 @@ function startDemo() {
     phase += 0.16;
     const power = 185 + Math.sin(phase) * 55 + Math.sin(phase * 0.37) * 25;
     const cadence = 84 + Math.sin(phase * 0.72) * 8;
+    const heartRate = 142 + Math.sin(phase * 0.3) * 11;
     updatePower(power);
     updateCadence(cadence);
+    updateHeartRate(heartRate);
   }, 500);
 }
 
@@ -487,6 +754,10 @@ function stopDemo() {
   els.demoButton.textContent = 'Start testvisning';
   setStatus('disconnected', 'Ikke forbundet', 'Tryk på Forbind til KICKR');
   els.dataSource.textContent = 'Datakilde: --';
+  trainingReference = loadTrainingReference();
+  populateReferenceInputs();
+  updateComparisons();
+  els.heartRateState.textContent = heartRateDevice?.gatt?.connected ? (heartRateDevice.name || 'Pulsmåler forbundet') : 'Pulsmåler ikke forbundet';
   log('Testvisning stoppet.');
 }
 
@@ -874,6 +1145,18 @@ els.connectButton.addEventListener('click', async () => {
 
 els.disconnectButton.addEventListener('click', disconnect);
 els.resetButton.addEventListener('click', resetSession);
+els.heartRateConnectButton?.addEventListener('click', async () => {
+  stopDemo();
+  try {
+    await connectHeartRate();
+  } catch (error) {
+    els.heartRateState.textContent = 'Pulsmåler ikke forbundet';
+    log(`Pulsfejl: ${error.message}`);
+    showToast(error.message);
+  }
+});
+els.heartRateDisconnectButton?.addEventListener('click', disconnectHeartRate);
+els.saveReferenceButton?.addEventListener('click', saveTrainingReference);
 els.demoButton.addEventListener('click', startDemo);
 els.fullscreenButton.addEventListener('click', toggleFullscreen);
 els.installButton?.addEventListener('click', installApp);
@@ -904,6 +1187,7 @@ document.addEventListener('visibilitychange', async () => {
 window.addEventListener('beforeunload', () => {
   reconnectCancelled = true;
   if (bluetoothDevice?.gatt?.connected) bluetoothDevice.gatt.disconnect();
+  if (heartRateDevice?.gatt?.connected) heartRateDevice.gatt.disconnect();
 });
 
 
@@ -920,6 +1204,9 @@ window.addEventListener('appinstalled', () => {
 });
 
 elapsedTimer = setInterval(updateElapsed, 500);
+populateReferenceInputs();
+updateComparisons();
+updatePowerChart(true);
 updateInstallButton();
 
 if ('serviceWorker' in navigator) {
@@ -934,4 +1221,8 @@ if (!navigator.bluetooth) {
   setStatus('disconnected', 'Web Bluetooth mangler', 'Åbn siden i Microsoft Edge eller Google Chrome');
   els.connectButton.disabled = true;
   log('Browseren understøtter ikke navigator.bluetooth.');
+}
+
+if (new URLSearchParams(window.location.search).get('demo') === '1') {
+  window.setTimeout(startDemo, 250);
 }
