@@ -374,3 +374,25 @@ h2 { margin-top: 2px; font-size: 1.7rem; }
   .spotify-now-playing { grid-template-columns: 66px minmax(0, 1fr); }
   .spotify-cover-link, .spotify-cover { width: 66px; height: 66px; }
 }
+
+/* Training history loaded from data/training-history.json */
+.settings-section code {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #050a08;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: .72rem;
+}
+.history-status-card {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+  padding: 13px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: rgba(101, 236, 154, .055);
+}
+.history-status-card strong { color: var(--text); font-size: .83rem; }
+.history-status-card span { color: var(--muted); font-size: .72rem; line-height: 1.4; }

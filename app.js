@@ -82,9 +82,12 @@ const els = {
   lastRideDelta: document.querySelector('#lastRideDelta'),
   thirtyDayDelta: document.querySelector('#thirtyDayDelta'),
   trendText: document.querySelector('#trendText'),
-  lastRideAverageInput: document.querySelector('#lastRideAverageInput'),
-  thirtyDayAverageInput: document.querySelector('#thirtyDayAverageInput'),
-  saveReferenceButton: document.querySelector('#saveReferenceButton'),
+  comparisonKicker: document.querySelector('#comparisonKicker'),
+  lastRideCaption: document.querySelector('#lastRideCaption'),
+  thirtyDayCaption: document.querySelector('#thirtyDayCaption'),
+  historyStatus: document.querySelector('#historyStatus'),
+  historySummary: document.querySelector('#historySummary'),
+  reloadHistoryButton: document.querySelector('#reloadHistoryButton'),
 };
 
 let bluetoothDevice = null;
@@ -107,7 +110,8 @@ let heartRateReconnectCancelled = false;
 let lastHeartRatePacketAt = 0;
 let lastChartRenderAt = 0;
 
-const REFERENCE_STORAGE_KEY = 'kickrTrainingReferenceV1';
+const HISTORY_URL = './data/training-history.json';
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const crankState = {
   power: { revolutions: null, eventTime: null },
@@ -125,50 +129,158 @@ const session = {
   currentHeartRate: null,
 };
 
-let trainingReference = loadTrainingReference();
+let trainingReference = {
+  lastRideAverage: null,
+  thirtyDayAverage: null,
+  lastRide: null,
+  thirtyDayActivities: 0,
+};
 
-function log(message) {
-  const stamp = new Date().toLocaleTimeString('da-DK', { hour12: false });
-  els.debugLog.textContent = `[${stamp}] ${message}\n${els.debugLog.textContent}`.slice(0, 7000);
+const trainingHistory = {
+  status: 'loading',
+  updatedAt: null,
+  activities: [],
+  error: null,
+};
+
+function activityTimestamp(activity) {
+  const source = activity.startTime || (activity.date ? `${activity.date}T12:00:00` : '');
+  const timestamp = Date.parse(source);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function showToast(message) {
-  clearTimeout(toastTimer);
-  els.toast.textContent = message;
-  els.toast.classList.add('show');
-  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 3400);
+function normalizeHistoryActivity(activity, index) {
+  if (!activity || typeof activity !== 'object') return null;
+
+  const averagePower = Number(activity.averagePower);
+  if (!Number.isFinite(averagePower) || averagePower <= 0) return null;
+
+  const durationSeconds = Number(activity.durationSeconds);
+  const timestamp = activityTimestamp(activity);
+  if (!timestamp) return null;
+
+  return {
+    id: String(activity.id || `${activity.date || 'activity'}-${index}`),
+    date: typeof activity.date === 'string' ? activity.date : new Date(timestamp).toISOString().slice(0, 10),
+    startTime: typeof activity.startTime === 'string' ? activity.startTime : null,
+    sport: typeof activity.sport === 'string' ? activity.sport : 'indoor_cycling',
+    durationSeconds: Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : null,
+    averagePower: Math.round(averagePower),
+    maxPower: Number.isFinite(Number(activity.maxPower)) ? Math.round(Number(activity.maxPower)) : null,
+    normalizedPower: Number.isFinite(Number(activity.normalizedPower)) ? Math.round(Number(activity.normalizedPower)) : null,
+    averageCadence: Number.isFinite(Number(activity.averageCadence)) ? Math.round(Number(activity.averageCadence)) : null,
+    averageHeartRate: Number.isFinite(Number(activity.averageHeartRate)) ? Math.round(Number(activity.averageHeartRate)) : null,
+    maxHeartRate: Number.isFinite(Number(activity.maxHeartRate)) ? Math.round(Number(activity.maxHeartRate)) : null,
+    distanceKm: Number.isFinite(Number(activity.distanceKm)) ? Number(activity.distanceKm) : null,
+    timestamp,
+  };
 }
 
-function loadTrainingReference() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(REFERENCE_STORAGE_KEY) || '{}');
-    return {
-      lastRideAverage: Number(saved.lastRideAverage) || null,
-      thirtyDayAverage: Number(saved.thirtyDayAverage) || null,
-    };
-  } catch (_) {
-    return { lastRideAverage: null, thirtyDayAverage: null };
+function formatHistoryDate(value) {
+  const timestamp = typeof value === 'number' ? value : Date.parse(value);
+  if (!Number.isFinite(timestamp)) return 'ukendt dato';
+  return new Intl.DateTimeFormat('da-DK', { day: 'numeric', month: 'short' }).format(new Date(timestamp));
+}
+
+function calculateTrainingReference(activities) {
+  const sorted = [...activities].sort((a, b) => b.timestamp - a.timestamp);
+  const lastRide = sorted[0] || null;
+  const now = Date.now();
+  const recent = sorted.filter(activity => activity.timestamp >= now - (30 * DAY_MS) && activity.timestamp <= now + DAY_MS);
+
+  let thirtyDayAverage = null;
+  if (recent.length) {
+    const withDuration = recent.filter(activity => Number.isFinite(activity.durationSeconds) && activity.durationSeconds > 0);
+    if (withDuration.length === recent.length) {
+      const totalSeconds = withDuration.reduce((sum, activity) => sum + activity.durationSeconds, 0);
+      thirtyDayAverage = totalSeconds > 0
+        ? withDuration.reduce((sum, activity) => sum + (activity.averagePower * activity.durationSeconds), 0) / totalSeconds
+        : null;
+    } else {
+      thirtyDayAverage = recent.reduce((sum, activity) => sum + activity.averagePower, 0) / recent.length;
+    }
+  }
+
+  return {
+    lastRideAverage: lastRide?.averagePower ?? null,
+    thirtyDayAverage: Number.isFinite(thirtyDayAverage) ? Math.round(thirtyDayAverage) : null,
+    lastRide,
+    thirtyDayActivities: recent.length,
+  };
+}
+
+function updateHistoryUi() {
+  if (els.comparisonKicker) els.comparisonKicker.textContent = 'Turens gennemsnit · live sammenligning';
+
+  if (trainingHistory.status === 'loading') {
+    if (els.historyStatus) els.historyStatus.textContent = 'Indlæser historik…';
+    if (els.historySummary) els.historySummary.textContent = 'Venter på data/training-history.json';
+    return;
+  }
+
+  if (trainingHistory.status === 'error') {
+    if (els.historyStatus) els.historyStatus.textContent = 'Historik kunne ikke indlæses';
+    if (els.historySummary) els.historySummary.textContent = trainingHistory.error || 'Kontrollér JSON-filen';
+    return;
+  }
+
+  const count = trainingHistory.activities.length;
+  if (els.historyStatus) els.historyStatus.textContent = count ? `${count} træning${count === 1 ? '' : 'er'} indlæst` : 'Historikfilen er tom';
+  if (els.historySummary) {
+    const updated = trainingHistory.updatedAt ? `Opdateret ${formatHistoryDate(trainingHistory.updatedAt)}` : 'Ingen opdateringsdato';
+    const recent = `${trainingReference.thirtyDayActivities} inden for 30 dage`;
+    els.historySummary.textContent = `${updated} · ${recent}`;
+  }
+
+  if (els.lastRideCaption) {
+    els.lastRideCaption.textContent = trainingReference.lastRide
+      ? `vs ${formatHistoryDate(trainingReference.lastRide.timestamp)} · ${trainingReference.lastRideAverage} W`
+      : 'vs sidste tur';
+  }
+  if (els.thirtyDayCaption) {
+    els.thirtyDayCaption.textContent = trainingReference.thirtyDayAverage
+      ? `vs 30 dage · ${trainingReference.thirtyDayAverage} W`
+      : 'vs 30 dages snit';
   }
 }
 
-function populateReferenceInputs() {
-  if (els.lastRideAverageInput) els.lastRideAverageInput.value = trainingReference.lastRideAverage ?? '';
-  if (els.thirtyDayAverageInput) els.thirtyDayAverageInput.value = trainingReference.thirtyDayAverage ?? '';
-}
+async function loadTrainingHistory({ announce = false } = {}) {
+  trainingHistory.status = 'loading';
+  trainingHistory.error = null;
+  updateHistoryUi();
 
-function saveTrainingReference() {
-  const parseValue = input => {
-    const value = Number(input?.value);
-    return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
-  };
+  try {
+    const response = await fetch(`${HISTORY_URL}?v=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Filen svarede med HTTP ${response.status}`);
 
-  trainingReference = {
-    lastRideAverage: parseValue(els.lastRideAverageInput),
-    thirtyDayAverage: parseValue(els.thirtyDayAverageInput),
-  };
-  localStorage.setItem(REFERENCE_STORAGE_KEY, JSON.stringify(trainingReference));
-  updateComparisons();
-  showToast('Referenceværdierne er gemt');
+    const payload = await response.json();
+    if (!payload || !Array.isArray(payload.activities)) {
+      throw new Error('JSON-filen mangler feltet activities');
+    }
+
+    const activities = payload.activities
+      .map(normalizeHistoryActivity)
+      .filter(Boolean)
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    trainingHistory.status = 'ready';
+    trainingHistory.updatedAt = typeof payload.updatedAt === 'string' ? payload.updatedAt : null;
+    trainingHistory.activities = activities;
+    trainingReference = calculateTrainingReference(activities);
+    updateHistoryUi();
+    updateComparisons();
+    log(`Træningshistorik indlæst: ${activities.length} gyldige aktiviteter.`);
+    if (announce) showToast(`${activities.length} træning${activities.length === 1 ? '' : 'er'} indlæst`);
+  } catch (error) {
+    trainingHistory.status = 'error';
+    trainingHistory.error = error.message;
+    trainingHistory.activities = [];
+    trainingReference = calculateTrainingReference([]);
+    updateHistoryUi();
+    updateComparisons();
+    log(`Historikfejl: ${error.message}`);
+    if (announce) showToast('Historikfilen kunne ikke læses');
+  }
 }
 
 function formatDelta(current, reference) {
@@ -190,8 +302,18 @@ function updateComparisons() {
   renderDelta(els.lastRideDelta, lastRide);
   renderDelta(els.thirtyDayDelta, thirtyDay);
 
+  if (trainingHistory.status === 'loading') {
+    els.trendText.textContent = 'Historik indlæses…';
+    els.trendText.className = 'trend-line neutral';
+    return;
+  }
+  if (trainingHistory.status === 'error') {
+    els.trendText.textContent = 'Kunne ikke læse data/training-history.json';
+    els.trendText.className = 'trend-line down';
+    return;
+  }
   if (!trainingReference.lastRideAverage && !trainingReference.thirtyDayAverage) {
-    els.trendText.textContent = 'Tilføj referenceværdier i indstillinger';
+    els.trendText.textContent = 'Ingen gyldige træninger i historikfilen endnu';
     els.trendText.className = 'trend-line neutral';
     return;
   }
@@ -1156,7 +1278,7 @@ els.heartRateConnectButton?.addEventListener('click', async () => {
   }
 });
 els.heartRateDisconnectButton?.addEventListener('click', disconnectHeartRate);
-els.saveReferenceButton?.addEventListener('click', saveTrainingReference);
+els.reloadHistoryButton?.addEventListener('click', () => loadTrainingHistory({ announce: true }));
 els.demoButton.addEventListener('click', startDemo);
 els.fullscreenButton.addEventListener('click', toggleFullscreen);
 els.installButton?.addEventListener('click', installApp);
@@ -1204,7 +1326,8 @@ window.addEventListener('appinstalled', () => {
 });
 
 elapsedTimer = setInterval(updateElapsed, 500);
-populateReferenceInputs();
+updateHistoryUi();
+loadTrainingHistory();
 updateComparisons();
 updatePowerChart(true);
 updateInstallButton();

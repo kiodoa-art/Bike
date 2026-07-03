@@ -51,15 +51,15 @@
         </div>
 
         <section class="comparison-card" aria-label="Live sammenligning">
-          <span class="comparison-kicker">Gennemsnit lige nu</span>
+          <span id="comparisonKicker" class="comparison-kicker">Historik indlæses…</span>
           <div class="comparison-values">
             <div>
               <strong id="lastRideDelta">—</strong>
-              <span>vs sidste tur</span>
+              <span id="lastRideCaption">vs sidste tur</span>
             </div>
             <div>
               <strong id="thirtyDayDelta">—</strong>
-              <span>vs 30 dages snit</span>
+              <span id="thirtyDayCaption">vs 30 dages snit</span>
             </div>
           </div>
           <div id="trendText" class="trend-line">Tilføj referenceværdier i indstillinger</div>
@@ -181,17 +181,14 @@
       </div>
 
       <section class="settings-section">
-        <h3>Træningsreference</h3>
-        <p>Brug gennemsnitswatt fra dine tidligere træninger. Tallene gemmes kun på denne enhed.</p>
-        <label>
-          <span>Sidste tur · gennemsnitswatt</span>
-          <input id="lastRideAverageInput" type="number" min="0" max="1000" inputmode="numeric" placeholder="fx 187">
-        </label>
-        <label>
-          <span>30 dages gennemsnit</span>
-          <input id="thirtyDayAverageInput" type="number" min="0" max="1000" inputmode="numeric" placeholder="fx 179">
-        </label>
-        <button id="saveReferenceButton" class="primary-button wide-button" type="button">Gem referenceværdier</button>
+        <h3>Træningshistorik</h3>
+        <p>Appen henter automatisk dine tidligere træninger fra <code>data/training-history.json</code>. Den seneste tur og det varighedsvægtede 30-dages-snit bruges i live-sammenligningen.</p>
+        <div class="history-status-card" aria-live="polite">
+          <strong id="historyStatus">Indlæser historik…</strong>
+          <span id="historySummary">Venter på filen</span>
+        </div>
+        <button id="reloadHistoryButton" class="secondary-button wide-button" type="button">Genindlæs historik</button>
+        <p class="settings-note">Når filen er erstattet på GitHub, kan du trykke her eller genstarte appen. Der bruges en cachefri hentning, så gamle tal ikke bliver hængende.</p>
       </section>
 
       <section class="settings-section">
