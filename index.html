@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f14">
+  <meta name="description" content="Live watt og kadence fra Wahoo KICKR via Web Bluetooth.">
+  <title>KICKR Live</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Wahoo KICKR dashboard</p>
+        <h1>KICKR Live</h1>
+      </div>
+      <button id="fullscreenButton" class="icon-button" type="button" aria-label="Fuld skærm" title="Fuld skærm">⛶</button>
+    </header>
+
+    <section class="connection-card" aria-live="polite">
+      <div class="status-wrap">
+        <span id="statusDot" class="status-dot disconnected"></span>
+        <div>
+          <strong id="statusText">Ikke forbundet</strong>
+          <small id="deviceText">Tryk på Forbind til KICKR</small>
+        </div>
+      </div>
+      <div class="connection-actions">
+        <button id="connectButton" class="primary-button" type="button">Forbind til KICKR</button>
+        <button id="disconnectButton" class="secondary-button" type="button" hidden>Afbryd</button>
+      </div>
+    </section>
+
+    <section class="hero-grid">
+      <article class="power-card">
+        <span class="metric-label">Watt lige nu</span>
+        <div class="power-value"><span id="powerValue">--</span><span class="power-unit">W</span></div>
+        <div class="power-bar" aria-hidden="true"><span id="powerBarFill"></span></div>
+        <p id="powerHint">Venter på data</p>
+      </article>
+
+      <article class="cadence-card">
+        <span class="metric-label">Kadence</span>
+        <div class="cadence-value"><span id="cadenceValue">--</span><span class="cadence-unit">rpm</span></div>
+        <p id="dataSource">Datakilde: --</p>
+      </article>
+    </section>
+
+    <section class="stats-grid">
+      <article class="stat-card">
+        <span>3 sek. watt</span>
+        <strong id="power3s">--</strong>
+      </article>
+      <article class="stat-card">
+        <span>Gennemsnit</span>
+        <strong id="averagePower">--</strong>
+      </article>
+      <article class="stat-card">
+        <span>Maks.</span>
+        <strong id="maxPower">--</strong>
+      </article>
+      <article class="stat-card">
+        <span>Tid</span>
+        <strong id="elapsedTime">00:00</strong>
+      </article>
+    </section>
+
+    <section class="controls-card">
+      <button id="resetButton" class="secondary-button" type="button">Nulstil turdata</button>
+      <button id="demoButton" class="text-button" type="button">Start testvisning</button>
+      <p>Appen læser kun målinger. Den sender ingen kommandoer og styrer ikke modstanden.</p>
+    </section>
+
+    <details class="debug-card">
+      <summary>Teknisk log</summary>
+      <pre id="debugLog">Klar.</pre>
+    </details>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js" defer></script>
+</body>
+</html>
