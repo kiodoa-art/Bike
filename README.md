@@ -1,52 +1,48 @@
-# KICKR Live
+# KICKR Live – Studio dashboard med træningshistorik
 
-En PWA til Surface/Windows, der læser live watt og kadence fra en Wahoo KICKR via Web Bluetooth og viser den aktuelle Spotify-afspilning.
+Upload alle filer og mapper til roden af din Bike-app på GitHub Pages. Mappestrukturen skal bevares:
 
-## Upload til GitHub Pages
+```text
+Bike/
+├── index.html
+├── app.js
+├── styles.css
+├── sw.js
+├── manifest.webmanifest
+├── icons/
+└── data/
+    └── training-history.json
+```
 
-1. Upload alle filer og mapper fra pakken til roden af repository'et `Bike`.
-2. Åbn **Settings → Pages**.
-3. Vælg **Deploy from a branch**, branch **main**, mappe **/(root)**.
-4. Åbn `https://kiodoa-art.github.io/Bike/` i Microsoft Edge.
+## Automatisk historik
 
-Web Bluetooth kræver HTTPS. Bluetooth-forbindelsen virker derfor fra GitHub Pages, men ikke ved at dobbeltklikke på `index.html`.
+Appen henter `data/training-history.json` ved hver opstart. Under tandhjulet kan filen genindlæses uden at genstarte appen.
 
-## KICKR
+Live-sammenligningen bruger:
 
-1. Start MyWhoosh og forbind KICKR som normalt.
-2. Åbn KICKR Live i Microsoft Edge på Surface 3.
-3. Tryk **Forbind til KICKR** og vælg træneren.
-4. Begynd at træde.
+- gennemsnitswatt fra den seneste gyldige aktivitet
+- et varighedsvægtet gennemsnit af aktiviteter inden for de seneste 30 dage
 
-Appen abonnerer kun på måledata. Den skriver ikke til trænerens kontrolpunkt og forsøger ikke at styre modstanden.
+Når du får en ny JSON-fil fra ChatGPT, erstatter du kun:
 
-## Spotify
+```text
+data/training-history.json
+```
 
-Spotify Client ID er allerede indsat i appen.
+Du skal ikke ændre appens øvrige filer ved hver træning.
 
-1. Sørg for, at denne Redirect URI står præcist i Spotify Developer Dashboard:
-   `https://kiodoa-art.github.io/Bike/`
-2. Åbn KICKR Live og tryk **Forbind Spotify**.
-3. Godkend læseadgang til den aktuelle afspilning.
-4. Efter tilbagevending viser appen sangtitel, kunstner/podcast, albumcover, afspilningsenhed og tidslinje.
+## Vigtigt
 
-Spotify-login genindlæser siden. Derfor skal KICKR forbindes igen efter det første Spotify-login. Senere kan Spotify normalt genforbindes automatisk via det gemte refresh token.
+- Bevar tidligere aktiviteter i JSON-filen. Den skal være kumulativ.
+- `averagePower` skal være træningens faktiske gennemsnitswatt.
+- Ukendte værdier skal stå som `null`, ikke gættes.
+- Filen må ikke omdøbes.
 
-Appen beder kun om læseadgang:
+Prompten til den anden chat ligger også i pakken som `PROMPT-TIL-TRÆNINGSHISTORIK.txt`.
 
-- `user-read-playback-state`
-- `user-read-currently-playing`
+## Installation på Surface
 
-Der bruges ingen Client Secret i GitHub-koden.
-
-## Hvis KICKR ikke forbinder
-
-- Kontrollér, at Bluetooth er slået til i Windows.
-- Brug Edge eller Chrome, ikke Firefox.
-- Åbn `edge://bluetooth-internals` for at kontrollere, om Windows kan se KICKR.
-- Luk Wahoo-appen og andre unødvendige apps, der kan have optaget Bluetooth-forbindelser.
-- KICKR v5 kan normalt håndtere op til tre samtidige Bluetooth-forbindelser, men kun MyWhoosh bør styre modstanden.
-
-## Test uden KICKR
-
-Tryk **Start testvisning** for at se layoutet med simulerede tal.
+1. Åbn siden i Microsoft Edge.
+2. Tryk **Installér**, når knappen vises, eller vælg **… → Apps → Installér dette websted som app**.
+3. Start KICKR Live fra ikonet.
+4. Brug knappen **⛶** for fuld skærm.
