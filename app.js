@@ -31,6 +31,11 @@ const els = {
   disconnectButton: document.querySelector('#disconnectButton'),
   resetButton: document.querySelector('#resetButton'),
   demoButton: document.querySelector('#demoButton'),
+  installButton: document.querySelector('#installButton'),
+  settingsButton: document.querySelector('#settingsButton'),
+  closeSettingsButton: document.querySelector('#closeSettingsButton'),
+  settingsPanel: document.querySelector('#settingsPanel'),
+  settingsBackdrop: document.querySelector('#settingsBackdrop'),
   fullscreenButton: document.querySelector('#fullscreenButton'),
   statusDot: document.querySelector('#statusDot'),
   statusText: document.querySelector('#statusText'),
@@ -69,6 +74,7 @@ let wakeLock = null;
 let demoTimer = null;
 let elapsedTimer = null;
 let toastTimer = null;
+let deferredInstallPrompt = null;
 let lastCadencePacketAt = 0;
 let spotifyPollTimer = null;
 let spotifyProgressTimer = null;
@@ -807,6 +813,45 @@ async function initializeSpotify() {
   else renderSpotifyDisconnected();
 }
 
+
+
+function setSettingsOpen(open) {
+  if (!els.settingsPanel || !els.settingsBackdrop) return;
+  els.settingsPanel.hidden = !open;
+  els.settingsBackdrop.hidden = !open;
+  document.body.style.overflow = open ? 'hidden' : '';
+}
+
+function isInstalledApp() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: fullscreen)').matches
+    || window.navigator.standalone === true;
+}
+
+function updateInstallButton() {
+  if (!els.installButton) return;
+  els.installButton.hidden = isInstalledApp() || !deferredInstallPrompt;
+}
+
+async function installApp() {
+  if (isInstalledApp()) {
+    showToast('Appen er allerede installeret');
+    return;
+  }
+  if (!deferredInstallPrompt) {
+    showToast('Brug Edge-menuen og vælg Apps → Installér dette websted som app');
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  try {
+    await deferredInstallPrompt.userChoice;
+  } catch (_) {
+    // ignore
+  }
+  deferredInstallPrompt = null;
+  updateInstallButton();
+}
+
 async function toggleFullscreen() {
   try {
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
@@ -831,6 +876,10 @@ els.disconnectButton.addEventListener('click', disconnect);
 els.resetButton.addEventListener('click', resetSession);
 els.demoButton.addEventListener('click', startDemo);
 els.fullscreenButton.addEventListener('click', toggleFullscreen);
+els.installButton?.addEventListener('click', installApp);
+els.settingsButton?.addEventListener('click', () => setSettingsOpen(true));
+els.closeSettingsButton?.addEventListener('click', () => setSettingsOpen(false));
+els.settingsBackdrop?.addEventListener('click', () => setSettingsOpen(false));
 els.spotifyConnectButton.addEventListener('click', async () => {
   try {
     await beginSpotifyLogin();
@@ -844,6 +893,10 @@ els.spotifyDisconnectButton.addEventListener('click', () => {
   showToast('Spotify er afbrudt');
 });
 
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') setSettingsOpen(false);
+});
+
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && bluetoothDevice?.gatt?.connected) await requestWakeLock();
 });
@@ -853,7 +906,21 @@ window.addEventListener('beforeunload', () => {
   if (bluetoothDevice?.gatt?.connected) bluetoothDevice.gatt.disconnect();
 });
 
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  updateInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  updateInstallButton();
+  showToast('Appen er installeret');
+});
+
 elapsedTimer = setInterval(updateElapsed, 500);
+updateInstallButton();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

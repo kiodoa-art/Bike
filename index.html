@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0f14">
-  <meta name="description" content="Live watt og kadence fra Wahoo KICKR via Web Bluetooth.">
+  <meta name="theme-color" content="#07100c">
+  <meta name="description" content="Live træningsdashboard med watt, kadence og Spotify til Wahoo KICKR.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>KICKR Live</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
@@ -12,78 +15,75 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="app-shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">Wahoo KICKR dashboard</p>
+  <main class="dashboard">
+    <header class="dashboard-header">
+      <div class="brand-block">
+        <p class="eyebrow">Wahoo KICKR</p>
         <h1>KICKR Live</h1>
       </div>
-      <button id="fullscreenButton" class="icon-button" type="button" aria-label="Fuld skærm" title="Fuld skærm">⛶</button>
-    </header>
 
-    <section class="connection-card" aria-live="polite">
-      <div class="status-wrap">
+      <div class="header-status" aria-live="polite">
         <span id="statusDot" class="status-dot disconnected"></span>
         <div>
           <strong id="statusText">Ikke forbundet</strong>
-          <small id="deviceText">Tryk på Forbind til KICKR</small>
+          <small id="deviceText">Tryk på forbind</small>
         </div>
       </div>
-      <div class="connection-actions">
-        <button id="connectButton" class="primary-button" type="button">Forbind til KICKR</button>
-        <button id="disconnectButton" class="secondary-button" type="button" hidden>Afbryd</button>
-      </div>
-    </section>
 
-    <section class="hero-grid">
-      <article class="power-card">
+      <div class="header-actions">
+        <button id="installButton" class="ghost-button" type="button" hidden>Installér</button>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Indstillinger" title="Indstillinger">⚙</button>
+        <button id="fullscreenButton" class="icon-button" type="button" aria-label="Fuld skærm" title="Fuld skærm">⛶</button>
+      </div>
+    </header>
+
+    <section class="metrics-layout">
+      <article class="metric-card power-card">
         <span class="metric-label">Watt lige nu</span>
         <div class="power-value"><span id="powerValue">--</span><span class="power-unit">W</span></div>
         <div class="power-bar" aria-hidden="true"><span id="powerBarFill"></span></div>
         <p id="powerHint">Venter på data</p>
       </article>
 
-      <article class="cadence-card">
-        <span class="metric-label">Kadence</span>
-        <div class="cadence-value"><span id="cadenceValue">--</span><span class="cadence-unit">rpm</span></div>
-        <p id="dataSource">Datakilde: --</p>
-      </article>
-    </section>
+      <div class="side-metrics">
+        <article class="metric-card cadence-card">
+          <span class="metric-label">Kadence</span>
+          <div class="cadence-value"><span id="cadenceValue">--</span><span class="cadence-unit">rpm</span></div>
+          <p id="dataSource">Datakilde: --</p>
+        </article>
 
-    <section class="stats-grid">
-      <article class="stat-card">
-        <span>3 sek. watt</span>
-        <strong id="power3s">--</strong>
-      </article>
-      <article class="stat-card">
-        <span>Gennemsnit</span>
-        <strong id="averagePower">--</strong>
-      </article>
-      <article class="stat-card">
-        <span>Maks.</span>
-        <strong id="maxPower">--</strong>
-      </article>
-      <article class="stat-card">
-        <span>Tid</span>
-        <strong id="elapsedTime">00:00</strong>
-      </article>
+        <section class="stats-grid">
+          <article class="stat-card">
+            <span>3 sek.</span>
+            <strong id="power3s">--</strong>
+          </article>
+          <article class="stat-card">
+            <span>Gennemsnit</span>
+            <strong id="averagePower">--</strong>
+          </article>
+          <article class="stat-card">
+            <span>Maks.</span>
+            <strong id="maxPower">--</strong>
+          </article>
+          <article class="stat-card time-card">
+            <span>Tid</span>
+            <strong id="elapsedTime">00:00</strong>
+          </article>
+        </section>
+      </div>
     </section>
-
 
     <section class="spotify-card" aria-live="polite">
-      <div class="spotify-header">
+      <div class="spotify-brand">
+        <span class="spotify-dot"></span>
         <div>
           <span class="spotify-kicker">Spotify</span>
           <strong id="spotifyStatus">Ikke forbundet</strong>
-          <small id="spotifyDevice">Viser det, der afspilles på din Spotify-konto</small>
-        </div>
-        <div class="spotify-actions">
-          <button id="spotifyConnectButton" class="spotify-button" type="button">Forbind Spotify</button>
-          <button id="spotifyDisconnectButton" class="secondary-button" type="button" hidden>Afbryd Spotify</button>
+          <small id="spotifyDevice">Viser det, der afspilles</small>
         </div>
       </div>
 
-      <div id="spotifyEmpty" class="spotify-empty">Forbind Spotify for at vise den aktuelle sang.</div>
+      <div id="spotifyEmpty" class="spotify-empty">Forbind Spotify for at vise musikken.</div>
 
       <div id="spotifyNowPlaying" class="spotify-now-playing" hidden>
         <a id="spotifyTrackLink" class="spotify-cover-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Åbn i Spotify">
@@ -100,18 +100,36 @@
           </div>
         </div>
       </div>
+
+      <div class="spotify-actions">
+        <button id="spotifyConnectButton" class="spotify-button" type="button">Forbind Spotify</button>
+        <button id="spotifyDisconnectButton" class="ghost-button" type="button" hidden>Afbryd Spotify</button>
+      </div>
     </section>
 
-    <section class="controls-card">
-      <button id="resetButton" class="secondary-button" type="button">Nulstil turdata</button>
-      <button id="demoButton" class="text-button" type="button">Start testvisning</button>
-      <p>Appen læser kun målinger. Den sender ingen kommandoer og styrer ikke modstanden.</p>
-    </section>
+    <footer class="action-bar">
+      <button id="connectButton" class="primary-button" type="button">Forbind KICKR</button>
+      <button id="disconnectButton" class="ghost-button" type="button" hidden>Afbryd KICKR</button>
+      <button id="resetButton" class="ghost-button" type="button">Nulstil tur</button>
+      <span class="read-only-note">Kun aflæsning – MyWhoosh styrer modstanden</span>
+    </footer>
 
-    <details class="debug-card">
-      <summary>Teknisk log</summary>
-      <pre id="debugLog">Klar.</pre>
-    </details>
+    <aside id="settingsPanel" class="settings-panel" hidden>
+      <div class="settings-header">
+        <div>
+          <p class="eyebrow">Service</p>
+          <h2>Indstillinger</h2>
+        </div>
+        <button id="closeSettingsButton" class="icon-button" type="button" aria-label="Luk indstillinger">×</button>
+      </div>
+      <button id="demoButton" class="ghost-button wide-button" type="button">Start testvisning</button>
+      <p class="settings-note">Testvisning og teknisk log er kun til fejlfinding.</p>
+      <details class="debug-card">
+        <summary>Teknisk log</summary>
+        <pre id="debugLog">Klar.</pre>
+      </details>
+    </aside>
+    <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
