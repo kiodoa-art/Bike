@@ -1,7 +1,7 @@
 {
   "name": "KICKR Live",
   "short_name": "KICKR Live",
-  "description": "Live watt og kadence fra Wahoo KICKR via Web Bluetooth.",
+  "description": "Live watt, kadence og Spotify-visning til Wahoo KICKR.",
   "lang": "da",
   "start_url": "./",
   "scope": "./",

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v1';
+const CACHE_NAME = 'kickr-live-v2-spotify';
 const ASSETS = [
   './',
   './index.html',

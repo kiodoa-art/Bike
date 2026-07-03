@@ -69,6 +69,39 @@
       </article>
     </section>
 
+
+    <section class="spotify-card" aria-live="polite">
+      <div class="spotify-header">
+        <div>
+          <span class="spotify-kicker">Spotify</span>
+          <strong id="spotifyStatus">Ikke forbundet</strong>
+          <small id="spotifyDevice">Viser det, der afspilles på din Spotify-konto</small>
+        </div>
+        <div class="spotify-actions">
+          <button id="spotifyConnectButton" class="spotify-button" type="button">Forbind Spotify</button>
+          <button id="spotifyDisconnectButton" class="secondary-button" type="button" hidden>Afbryd Spotify</button>
+        </div>
+      </div>
+
+      <div id="spotifyEmpty" class="spotify-empty">Forbind Spotify for at vise den aktuelle sang.</div>
+
+      <div id="spotifyNowPlaying" class="spotify-now-playing" hidden>
+        <a id="spotifyTrackLink" class="spotify-cover-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Åbn i Spotify">
+          <img id="spotifyCover" class="spotify-cover" alt="Albumcover">
+        </a>
+        <div class="spotify-details">
+          <span id="spotifyPlaybackState" class="spotify-playback-state">Afspiller</span>
+          <strong id="spotifyTrackTitle">–</strong>
+          <span id="spotifyArtist">–</span>
+          <div class="spotify-progress" aria-hidden="true"><span id="spotifyProgressFill"></span></div>
+          <div class="spotify-time">
+            <span id="spotifyElapsed">0:00</span>
+            <span id="spotifyDuration">0:00</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="controls-card">
       <button id="resetButton" class="secondary-button" type="button">Nulstil turdata</button>
       <button id="demoButton" class="text-button" type="button">Start testvisning</button>
