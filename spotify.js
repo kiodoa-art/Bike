@@ -442,10 +442,27 @@
     return base64Url(new Uint8Array(digest));
   }
 
+  async function leaveFullscreenBeforeLogin() {
+    // OAuth foregår på Spotifys domæne. Forlad Fullscreen API først, så
+    // Chromium/Edge ikke forsøger at videreføre en fullscreen-tilladelse
+    // til den eksterne login-side.
+    if (!document.fullscreenElement || typeof document.exitFullscreen !== 'function') return;
+
+    try {
+      await document.exitFullscreen();
+    } catch (error) {
+      appLog(`Kunne ikke forlade fuld skærm før Spotify-login: ${error.message}`);
+      // Login må stadig forsøges. PWA'en kan også være startet i en
+      // manifest-styret visning, som ikke kan afsluttes via Fullscreen API.
+    }
+  }
+
   async function beginLogin() {
     if (!window.crypto?.subtle) {
       throw new Error('Browseren understøtter ikke det sikre Spotify-login.');
     }
+
+    await leaveFullscreenBeforeLogin();
 
     const verifier = randomString(64);
     const challenge = await sha256Base64Url(verifier);

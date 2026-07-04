@@ -883,11 +883,25 @@ async function installApp() {
 }
 
 async function toggleFullscreen() {
+  if (window.matchMedia('(display-mode: fullscreen)').matches && !document.fullscreenElement) {
+    showToast('Appen kører allerede i fuld skærm');
+    return;
+  }
+
+  if (!document.fullscreenEnabled || typeof document.documentElement.requestFullscreen !== 'function') {
+    showToast('Browseren tillader ikke fuld skærm her');
+    return;
+  }
+
   try {
-    if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
-    else await document.exitFullscreen();
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    } else {
+      await document.exitFullscreen();
+    }
   } catch (error) {
-    showToast(`Fuld skærm kunne ikke åbnes: ${error.message}`);
+    log(`Fuldskærmsfejl: ${error.message}`);
+    showToast('Fuld skærm blev afvist af browseren');
   }
 }
 
