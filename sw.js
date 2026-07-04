@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v11-spotify-fullscreen-fix';
+const CACHE_NAME = 'kickr-live-v12-spotify-settings';
 const HISTORY_PATH = './data/training-history.json';
 const ASSETS = [
   './',
