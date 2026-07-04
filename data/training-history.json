@@ -1,12 +1,27 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-07-03T22:31:22+02:00",
-  "source": "Garmin FIT files analysed in ChatGPT",
+  "updatedAt": "2026-07-04T18:21:52.034Z",
+  "source": "Garmin FIT files analysed in Training History PWA",
   "activities": [
+    {
+      "id": "23479855774",
+      "date": "2026-07-04",
+      "startTime": "2026-07-04T17:21:02.000Z",
+      "sport": "indoor_cycling",
+      "durationSeconds": 1809,
+      "averagePower": 121,
+      "maxPower": 230,
+      "normalizedPower": 126,
+      "averageCadence": 86,
+      "averageHeartRate": 137,
+      "maxHeartRate": 155,
+      "distanceKm": 15.31,
+      "notes": "Importeret fra 23479855774_ACTIVITY.fit"
+    },
     {
       "id": "23467751257",
       "date": "2026-07-03",
-      "startTime": "2026-07-03T19:04:37+02:00",
+      "startTime": "2026-07-03T17:04:37.000Z",
       "sport": "indoor_cycling",
       "durationSeconds": 1833,
       "averagePower": 112,
@@ -16,7 +31,22 @@
       "averageHeartRate": 137,
       "maxHeartRate": 156,
       "distanceKm": 14.98,
-      "notes": "Indoor hometrainer. 30 min rolig/genopstartstur."
+      "notes": "Importeret fra 23467751257_ACTIVITY.fit"
+    },
+    {
+      "id": "23456263119",
+      "date": "2026-07-02",
+      "startTime": "2026-07-02T16:59:45.000Z",
+      "sport": "indoor_cycling",
+      "durationSeconds": 1820,
+      "averagePower": 117,
+      "maxPower": 237,
+      "normalizedPower": 122,
+      "averageCadence": 86,
+      "averageHeartRate": 140,
+      "maxHeartRate": 159,
+      "distanceKm": 15.51,
+      "notes": "Importeret fra 23456263119_ACTIVITY.fit"
     }
   ]
 }
