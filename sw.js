@@ -1,12 +1,13 @@
-const CACHE_NAME = 'kickr-live-v6-json-history';
+const CACHE_NAME = 'kickr-live-v7-spotify-controls';
 const HISTORY_PATH = './data/training-history.json';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
+  './spotify-controls.css',
   './app.js',
+  './spotify-controls.js',
   './manifest.webmanifest',
-  HISTORY_PATH,
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
@@ -18,7 +19,9 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+    caches.keys().then(keys => Promise.all(
+      keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+    ))
   );
   self.clients.claim();
 });
@@ -27,6 +30,7 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
   if (url.pathname.endsWith('/data/training-history.json')) {
     event.respondWith(
       fetch(event.request, { cache: 'no-store' })

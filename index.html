@@ -13,6 +13,7 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="spotify-controls.css">
 </head>
 <body>
   <main class="dashboard">
@@ -153,6 +154,8 @@
           </div>
         </div>
 
+        <div id="spotifyControlMount"></div>
+
         <div class="spotify-actions">
           <button id="spotifyConnectButton" class="spotify-button" type="button">Forbind Spotify</button>
           <button id="spotifyDisconnectButton" class="quiet-button" type="button" hidden>Afbryd Spotify</button>
@@ -205,6 +208,8 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Disse to funktioner manglede i den tidligere dashboard-udgave. -->
   <script>
     function log(message) {
       const target = document.querySelector('#debugLog');
@@ -223,5 +228,6 @@
     }
   </script>
   <script src="app.js" defer></script>
+  <script src="spotify-controls.js" defer></script>
 </body>
 </html>
