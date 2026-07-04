@@ -502,6 +502,17 @@
     }
 
     saveTokens(payload);
+
+    // En vellykket OAuth-kodeudveksling er den nye godkendelse. Markér derfor
+    // styrings-scopet som godkendt med det samme, så gen-godkendelsesboksen
+    // ikke bliver stående, indtil brugeren har trykket på en af knapperne.
+    const grantedScopes = new Set(
+      String(payload.scope || CONFIG.scopes.join(' '))
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    setControlPermission(grantedScopes.has('user-modify-playback-state'));
+
     removeStorage(sessionStorage, CONFIG.verifierStorageKey);
     removeStorage(sessionStorage, CONFIG.stateStorageKey);
   }

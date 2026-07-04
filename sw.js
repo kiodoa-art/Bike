@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v9-spotify-module';
+const CACHE_NAME = 'kickr-live-v10-spotify-permission-fix';
 const HISTORY_PATH = './data/training-history.json';
 const ASSETS = [
   './',
