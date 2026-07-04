@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v12-spotify-settings';
+const CACHE_NAME = 'kickr-live-v13-cleanup';
 const HISTORY_PATH = './data/training-history.json';
 const ASSETS = [
   './',
@@ -21,9 +21,8 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
       keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
-    ))
+    )).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
@@ -60,10 +59,17 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        }
         return response;
       })
-      .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
+      .catch(() => caches.match(event.request).then(cached => (
+        cached || new Response('Indholdet er ikke tilgængeligt offline.', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        })
+      )))
   );
 });

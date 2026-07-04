@@ -1,5 +1,23 @@
 'use strict';
 
+let toastTimer = null;
+
+function log(message) {
+  const target = document.querySelector('#debugLog');
+  if (!target) return;
+  const stamp = new Date().toLocaleTimeString('da-DK', { hour12: false });
+  target.textContent = `[${stamp}] ${message}\n${target.textContent}`.slice(0, 7000);
+}
+
+function showToast(message) {
+  const toast = document.querySelector('#toast');
+  if (!toast) return;
+  window.clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.classList.add('show');
+  toastTimer = window.setTimeout(() => toast.classList.remove('show'), 3400);
+}
+
 // Standard Bluetooth SIG UUIDs. The app only subscribes to notifications.
 // It never opens or writes to any control-point characteristic.
 const UUID = {
@@ -64,7 +82,6 @@ let subscribedCharacteristics = [];
 let reconnectCancelled = false;
 let wakeLock = null;
 let demoTimer = null;
-let elapsedTimer = null;
 let deferredInstallPrompt = null;
 let lastCadencePacketAt = 0;
 let heartRateDevice = null;
@@ -812,8 +829,14 @@ function startDemo() {
   els.demoButton.textContent = 'Stop testvisning';
   els.dataSource.textContent = 'Datakilde: testdata';
   if (!trainingReference.lastRideAverage && !trainingReference.thirtyDayAverage) {
-    trainingReference = { lastRideAverage: 206, thirtyDayAverage: 210 };
-    populateReferenceInputs();
+    trainingReference = {
+      lastRideAverage: 206,
+      thirtyDayAverage: 210,
+      lastRide: null,
+      thirtyDayActivities: 0,
+    };
+    updateHistoryUi();
+    updateComparisons();
   }
   els.heartRateState.textContent = 'Simuleret pulsmåler';
   setStatus('connected', 'Testvisning', 'Simulerede tal – ikke KICKR-data');
@@ -837,8 +860,8 @@ function stopDemo() {
   els.demoButton.textContent = 'Start testvisning';
   setStatus('disconnected', 'Ikke forbundet', 'Tryk på Forbind til KICKR');
   els.dataSource.textContent = 'Datakilde: --';
-  trainingReference = loadTrainingReference();
-  populateReferenceInputs();
+  trainingReference = calculateTrainingReference(trainingHistory.activities);
+  updateHistoryUi();
   updateComparisons();
   els.heartRateState.textContent = heartRateDevice?.gatt?.connected ? (heartRateDevice.name || 'Pulsmåler forbundet') : 'Pulsmåler ikke forbundet';
   log('Testvisning stoppet.');
@@ -847,9 +870,13 @@ function stopDemo() {
 
 function setSettingsOpen(open) {
   if (!els.settingsPanel || !els.settingsBackdrop) return;
+  const wasOpen = !els.settingsPanel.hidden;
   els.settingsPanel.hidden = !open;
   els.settingsBackdrop.hidden = !open;
+  els.settingsButton?.setAttribute('aria-expanded', String(open));
   document.body.style.overflow = open ? 'hidden' : '';
+  if (open) els.settingsPanel.focus();
+  else if (wasOpen) els.settingsButton?.focus();
 }
 
 function isInstalledApp() {
@@ -964,7 +991,7 @@ window.addEventListener('appinstalled', () => {
   showToast('Appen er installeret');
 });
 
-elapsedTimer = setInterval(updateElapsed, 500);
+setInterval(updateElapsed, 500);
 updateHistoryUi();
 loadTrainingHistory();
 updateComparisons();

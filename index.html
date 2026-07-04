@@ -35,7 +35,7 @@
           </div>
         </div>
         <button id="installButton" class="header-button install-button" type="button" hidden>Installér</button>
-        <button id="settingsButton" class="icon-button" type="button" aria-label="Indstillinger" title="Indstillinger">⚙</button>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Indstillinger" aria-controls="settingsPanel" aria-expanded="false" title="Indstillinger">⚙</button>
         <button id="fullscreenButton" class="icon-button" type="button" aria-label="Fuld skærm" title="Fuld skærm">⛶</button>
       </div>
     </header>
@@ -210,11 +210,11 @@
       <span class="read-only-note">Kun aflæsning · MyWhoosh styrer modstanden</span>
     </footer>
 
-    <aside id="settingsPanel" class="settings-panel" hidden>
+    <aside id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsHeading" tabindex="-1" hidden>
       <div class="settings-header">
         <div>
           <p class="eyebrow">KICKR Live</p>
-          <h2>Indstillinger</h2>
+          <h2 id="settingsHeading">Indstillinger</h2>
         </div>
         <button id="closeSettingsButton" class="icon-button" type="button" aria-label="Luk indstillinger">×</button>
       </div>
@@ -251,24 +251,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <!-- Disse to funktioner manglede i den tidligere dashboard-udgave. -->
-  <script>
-    function log(message) {
-      const target = document.querySelector('#debugLog');
-      if (!target) return;
-      const stamp = new Date().toLocaleTimeString('da-DK', { hour12: false });
-      target.textContent = `[${stamp}] ${message}\n${target.textContent}`.slice(0, 7000);
-    }
-
-    function showToast(message) {
-      const toast = document.querySelector('#toast');
-      if (!toast) return;
-      window.clearTimeout(window.__kickrToastTimer);
-      toast.textContent = message;
-      toast.classList.add('show');
-      window.__kickrToastTimer = window.setTimeout(() => toast.classList.remove('show'), 3400);
-    }
-  </script>
   <script src="app.js" defer></script>
   <script src="spotify.js" defer></script>
 </body>
