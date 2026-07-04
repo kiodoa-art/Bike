@@ -1,7 +1,16 @@
+.spotify-controls-panel {
+  grid-column: 1 / -1;
+  padding: 14px 18px;
+  border: 1px solid rgba(101, 236, 154, 0.18);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(19,32,25,.98), rgba(10,17,13,.98));
+  box-shadow: 0 18px 48px rgba(0,0,0,.22);
+}
+
 .spotify-controller {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(101, 236, 154, 0.16);
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .spotify-permission-notice {
@@ -9,26 +18,26 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 9px;
-  padding: 8px 10px;
+  margin-bottom: 10px;
+  padding: 9px 11px;
   border: 1px solid rgba(255, 200, 87, 0.45);
   border-radius: 12px;
   background: rgba(255, 200, 87, 0.10);
   color: #f7df9a;
-  font-size: 0.73rem;
+  font-size: 0.78rem;
   line-height: 1.25;
 }
 
 .spotify-permission-notice button {
-  min-height: 34px;
+  min-height: 36px;
   flex: 0 0 auto;
-  padding: 0 11px;
+  padding: 0 12px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 10px;
   background: #65ec9a;
   color: #041008;
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 900;
   cursor: pointer;
 }
@@ -36,15 +45,15 @@
 .spotify-transport {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 7px;
+  gap: 10px;
 }
 
 .spotify-control-button {
   min-width: 0;
-  min-height: 48px;
-  padding: 5px 3px 4px;
+  min-height: 58px;
+  padding: 8px 4px 6px;
   border: 1px solid rgba(101, 236, 154, 0.20);
-  border-radius: 12px;
+  border-radius: 14px;
   background: rgba(8, 20, 14, 0.88);
   color: #f4f8f5;
   font: inherit;
@@ -75,8 +84,8 @@
 .spotify-control-button > span:last-child {
   display: block;
   overflow: hidden;
-  margin-top: 1px;
-  font-size: 0.61rem;
+  margin-top: 3px;
+  font-size: 0.72rem;
   font-weight: 800;
   line-height: 1;
   text-overflow: ellipsis;
@@ -85,7 +94,7 @@
 
 .spotify-control-icon {
   display: block;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 900;
   line-height: 1;
 }
@@ -97,29 +106,29 @@
 
 .spotify-volume-row {
   display: grid;
-  grid-template-columns: 32px 22px minmax(70px, 1fr) 42px 32px;
+  grid-template-columns: 42px 28px minmax(120px, 1fr) 54px 42px;
   align-items: center;
-  gap: 7px;
-  margin-top: 9px;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .spotify-volume-step {
-  width: 32px;
-  height: 32px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   border: 1px solid rgba(101, 236, 154, 0.24);
-  border-radius: 9px;
+  border-radius: 11px;
   background: rgba(8, 20, 14, 0.88);
   color: #f4f8f5;
   font: inherit;
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   font-weight: 900;
   cursor: pointer;
   touch-action: manipulation;
 }
 
 .spotify-speaker {
-  font-size: 0.95rem;
+  font-size: 1rem;
   text-align: center;
 }
 
@@ -131,62 +140,40 @@
 
 .spotify-volume-row output {
   color: #b5c9bc;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .spotify-control-status {
   min-height: 1em;
-  margin-top: 6px;
+  margin-top: 10px;
   overflow: hidden;
   color: #779184;
-  font-size: 0.64rem;
+  font-size: 0.76rem;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.spotify-control-status.success {
-  color: #65ec9a;
-}
+.spotify-control-status.success { color: #65ec9a; }
+.spotify-control-status.warning { color: #ffc857; }
+.spotify-control-status.error { color: #ff7777; }
 
-.spotify-control-status.warning {
-  color: #ffc857;
-}
-
-.spotify-control-status.error {
-  color: #ff7777;
-}
-
-@media (max-width: 1050px) {
-  .spotify-control-button {
-    min-height: 44px;
-  }
-
-  .spotify-control-button > span:last-child {
-    font-size: 0.56rem;
-  }
-
-  .spotify-control-icon {
-    font-size: 1.12rem;
-  }
+@media (max-width: 920px) {
+  .spotify-controls-panel { padding: 12px 14px; }
+  .spotify-transport { gap: 8px; }
+  .spotify-control-button { min-height: 54px; }
+  .spotify-control-button > span:last-child { font-size: 0.66rem; }
 }
 
 @media (max-width: 720px) {
   .spotify-transport {
-    gap: 5px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .spotify-control-button > span:last-child {
-    display: none;
-  }
-
-  .spotify-control-button {
-    min-height: 46px;
-  }
-
-  .spotify-control-icon {
-    font-size: 1.35rem;
+  .spotify-volume-row {
+    grid-template-columns: 38px 24px minmax(90px, 1fr) 50px 38px;
+    gap: 8px;
   }
 }
