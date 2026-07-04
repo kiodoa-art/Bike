@@ -129,10 +129,10 @@
         </div>
       </article>
 
-      <section class="panel spotify-card" aria-live="polite">
+      <section class="panel spotify-card" aria-labelledby="spotifyHeading">
         <div class="spotify-brand-row">
           <div>
-            <span class="spotify-kicker">Spotify · afspiller nu</span>
+            <span id="spotifyHeading" class="spotify-kicker">Spotify · afspiller nu</span>
             <strong id="spotifyStatus">Ikke forbundet</strong>
             <small id="spotifyDevice">Viser det, der afspilles</small>
           </div>
@@ -154,7 +154,44 @@
           </div>
         </div>
 
-        <div id="spotifyControlMount"></div>
+        <div id="spotifyControlMount">
+          <section class="spotify-controller" aria-label="Spotify styring" aria-busy="false">
+            <div id="spotifyPermissionNotice" class="spotify-permission-notice" role="status" hidden>
+              <span>Spotify skal godkendes igen én gang for at aktivere styring.</span>
+              <button id="spotifyReconnectButton" type="button">Godkend styring</button>
+            </div>
+
+            <div class="spotify-transport" role="group" aria-label="Afspilningsknapper">
+              <button class="spotify-control-button" id="spotifyPreviousButton" type="button" aria-label="Forrige nummer" title="Forrige">
+                <span class="spotify-control-icon" aria-hidden="true">⏮</span><span>Forrige</span>
+              </button>
+              <button class="spotify-control-button spotify-control-primary" id="spotifyPlayButton" type="button" aria-label="Start eller fortsæt" aria-pressed="false" title="Start">
+                <span class="spotify-control-icon" aria-hidden="true">▶</span><span>Start</span>
+              </button>
+              <button class="spotify-control-button" id="spotifyPauseButton" type="button" aria-label="Pause" aria-pressed="false" title="Pause">
+                <span class="spotify-control-icon" aria-hidden="true">⏸</span><span>Pause</span>
+              </button>
+              <button class="spotify-control-button" id="spotifyStopButton" type="button" aria-label="Stop og gå til starten" title="Stop">
+                <span class="spotify-control-icon" aria-hidden="true">■</span><span>Stop</span>
+              </button>
+              <button class="spotify-control-button" id="spotifyNextButton" type="button" aria-label="Næste nummer" title="Næste">
+                <span class="spotify-control-icon" aria-hidden="true">⏭</span><span>Næste</span>
+              </button>
+            </div>
+
+            <div class="spotify-volume-row">
+              <button id="spotifyVolumeDownButton" class="spotify-volume-step" type="button" aria-label="Skru ned">−</button>
+              <span class="spotify-speaker" aria-hidden="true">🔊</span>
+              <input id="spotifyVolumeSlider" type="range" min="0" max="100" step="1" value="50" aria-label="Spotify lydstyrke" aria-valuetext="50 procent">
+              <output id="spotifyVolumeValue" for="spotifyVolumeSlider">50%</output>
+              <button id="spotifyVolumeUpButton" class="spotify-volume-step" type="button" aria-label="Skru op">+</button>
+            </div>
+
+            <div id="spotifyControlStatus" class="spotify-control-status" role="status" aria-live="polite" aria-atomic="true">
+              Forbind Spotify og start afspilning på en enhed.
+            </div>
+          </section>
+        </div>
 
         <div class="spotify-actions">
           <button id="spotifyConnectButton" class="spotify-button" type="button">Forbind Spotify</button>
@@ -228,6 +265,6 @@
     }
   </script>
   <script src="app.js" defer></script>
-  <script src="spotify-controls.js" defer></script>
+  <script src="spotify.js" defer></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v8-spotify-layout-real-fix';
+const CACHE_NAME = 'kickr-live-v9-spotify-module';
 const HISTORY_PATH = './data/training-history.json';
 const ASSETS = [
   './',
@@ -6,7 +6,7 @@ const ASSETS = [
   './styles.css',
   './spotify-controls.css',
   './app.js',
-  './spotify-controls.js',
+  './spotify.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png'
@@ -30,6 +30,18 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
+  // Spotify API-kald og andre eksterne forespørgsler må aldrig caches af appen.
+  if (url.origin !== self.location.origin) return;
+
+  // OAuth-callbacks kan indeholde en engangskode i URL'en og må ikke gemmes i cachen.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' })
+        .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
 
   if (url.pathname.endsWith('/data/training-history.json')) {
     event.respondWith(

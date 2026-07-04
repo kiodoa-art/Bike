@@ -13,21 +13,6 @@ const UUID = {
   heartRateMeasurement: 0x2a37,
 };
 
-
-
-const SPOTIFY = {
-  clientId: 'cf99ee32743343bfa30807d3195d59f9',
-  redirectUri: 'https://kiodoa-art.github.io/Bike/',
-  authorizeUrl: 'https://accounts.spotify.com/authorize',
-  tokenUrl: 'https://accounts.spotify.com/api/token',
-  apiBase: 'https://api.spotify.com/v1',
-  scopes: ['user-read-playback-state', 'user-read-currently-playing'],
-  pollIntervalMs: 5000,
-  tokenStorageKey: 'kickrSpotifyTokensV1',
-  verifierStorageKey: 'kickrSpotifyPkceVerifierV1',
-  stateStorageKey: 'kickrSpotifyOauthStateV1',
-};
-
 const els = {
   connectButton: document.querySelector('#connectButton'),
   disconnectButton: document.querySelector('#disconnectButton'),
@@ -50,22 +35,6 @@ const els = {
   elapsedTime: document.querySelector('#elapsedTime'),
   powerHint: document.querySelector('#powerHint'),
   dataSource: document.querySelector('#dataSource'),
-  debugLog: document.querySelector('#debugLog'),
-  toast: document.querySelector('#toast'),
-  spotifyConnectButton: document.querySelector('#spotifyConnectButton'),
-  spotifyDisconnectButton: document.querySelector('#spotifyDisconnectButton'),
-  spotifyStatus: document.querySelector('#spotifyStatus'),
-  spotifyDevice: document.querySelector('#spotifyDevice'),
-  spotifyEmpty: document.querySelector('#spotifyEmpty'),
-  spotifyNowPlaying: document.querySelector('#spotifyNowPlaying'),
-  spotifyTrackLink: document.querySelector('#spotifyTrackLink'),
-  spotifyCover: document.querySelector('#spotifyCover'),
-  spotifyPlaybackState: document.querySelector('#spotifyPlaybackState'),
-  spotifyTrackTitle: document.querySelector('#spotifyTrackTitle'),
-  spotifyArtist: document.querySelector('#spotifyArtist'),
-  spotifyProgressFill: document.querySelector('#spotifyProgressFill'),
-  spotifyElapsed: document.querySelector('#spotifyElapsed'),
-  spotifyDuration: document.querySelector('#spotifyDuration'),
   heartRateConnectButton: document.querySelector('#heartRateConnectButton'),
   heartRateDisconnectButton: document.querySelector('#heartRateDisconnectButton'),
   heartRateValue: document.querySelector('#heartRateValue'),
@@ -96,14 +65,8 @@ let reconnectCancelled = false;
 let wakeLock = null;
 let demoTimer = null;
 let elapsedTimer = null;
-let toastTimer = null;
 let deferredInstallPrompt = null;
 let lastCadencePacketAt = 0;
-let spotifyPollTimer = null;
-let spotifyProgressTimer = null;
-let spotifyPolling = false;
-let spotifyPlayback = null;
-let spotifyRefreshPromise = null;
 let heartRateDevice = null;
 let heartRateCharacteristic = null;
 let heartRateReconnectCancelled = false;
@@ -668,9 +631,7 @@ async function setupDataServices(server) {
 }
 
 async function connectToSelectedDevice() {
-  initializeSpotify();
-
-if (!navigator.bluetooth) {
+  if (!navigator.bluetooth) {
     throw new Error('Web Bluetooth findes ikke i denne browser. Brug Microsoft Edge eller Google Chrome.');
   }
 
@@ -884,330 +845,6 @@ function stopDemo() {
 }
 
 
-function spotifyBase64Url(bytes) {
-  let binary = '';
-  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function spotifyRandomString(length = 64) {
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return spotifyBase64Url(bytes);
-}
-
-async function spotifySha256Base64Url(value) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return spotifyBase64Url(new Uint8Array(digest));
-}
-
-function getSpotifyTokens() {
-  try {
-    return JSON.parse(localStorage.getItem(SPOTIFY.tokenStorageKey) || 'null');
-  } catch (_) {
-    return null;
-  }
-}
-
-function saveSpotifyTokens(payload, existing = null) {
-  const tokens = {
-    accessToken: payload.access_token,
-    refreshToken: payload.refresh_token || existing?.refreshToken || null,
-    expiresAt: Date.now() + Math.max(0, Number(payload.expires_in || 3600) - 45) * 1000,
-  };
-  localStorage.setItem(SPOTIFY.tokenStorageKey, JSON.stringify(tokens));
-  return tokens;
-}
-
-function clearSpotifyAuth() {
-  localStorage.removeItem(SPOTIFY.tokenStorageKey);
-  sessionStorage.removeItem(SPOTIFY.verifierStorageKey);
-  sessionStorage.removeItem(SPOTIFY.stateStorageKey);
-  spotifyPlayback = null;
-  stopSpotifyPolling();
-  renderSpotifyDisconnected();
-}
-
-function setSpotifyConnectedUi(connected) {
-  els.spotifyConnectButton.hidden = connected;
-  els.spotifyDisconnectButton.hidden = !connected;
-}
-
-function renderSpotifyDisconnected() {
-  setSpotifyConnectedUi(false);
-  els.spotifyStatus.textContent = 'Ikke forbundet';
-  els.spotifyDevice.textContent = 'Viser det, der afspilles på din Spotify-konto';
-  els.spotifyEmpty.hidden = false;
-  els.spotifyEmpty.textContent = 'Forbind Spotify for at vise den aktuelle sang.';
-  els.spotifyNowPlaying.hidden = true;
-  els.spotifyProgressFill.style.width = '0%';
-}
-
-function renderSpotifyIdle(message = 'Spotify er forbundet, men intet afspilles lige nu.') {
-  setSpotifyConnectedUi(true);
-  els.spotifyStatus.textContent = 'Forbundet';
-  els.spotifyDevice.textContent = 'Venter på afspilning';
-  els.spotifyEmpty.hidden = false;
-  els.spotifyEmpty.textContent = message;
-  els.spotifyNowPlaying.hidden = true;
-  els.spotifyProgressFill.style.width = '0%';
-}
-
-function formatSpotifyTime(ms) {
-  const totalSeconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
-
-function updateSpotifyProgress() {
-  if (!spotifyPlayback) return;
-  const elapsedSinceFetch = spotifyPlayback.isPlaying ? Date.now() - spotifyPlayback.fetchedAt : 0;
-  const progress = Math.min(spotifyPlayback.durationMs, spotifyPlayback.progressMs + elapsedSinceFetch);
-  const percent = spotifyPlayback.durationMs > 0 ? (progress / spotifyPlayback.durationMs) * 100 : 0;
-  els.spotifyProgressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-  els.spotifyElapsed.textContent = formatSpotifyTime(progress);
-  els.spotifyDuration.textContent = formatSpotifyTime(spotifyPlayback.durationMs);
-}
-
-function renderSpotifyPlayback(data) {
-  const item = data?.item;
-  if (!item) {
-    spotifyPlayback = null;
-    renderSpotifyIdle();
-    return;
-  }
-
-  const isEpisode = item.type === 'episode';
-  const title = item.name || 'Ukendt titel';
-  const artist = isEpisode
-    ? (item.show?.name || 'Podcast')
-    : ((item.artists || []).map(entry => entry.name).filter(Boolean).join(', ') || 'Ukendt kunstner');
-  const images = isEpisode ? (item.images || item.show?.images || []) : (item.album?.images || []);
-  const cover = images[0]?.url || '';
-  const externalUrl = item.external_urls?.spotify || 'https://open.spotify.com/';
-  const deviceName = data.device?.name || 'Spotify';
-
-  spotifyPlayback = {
-    progressMs: Number(data.progress_ms || 0),
-    durationMs: Number(item.duration_ms || 0),
-    fetchedAt: Date.now(),
-    isPlaying: Boolean(data.is_playing),
-  };
-
-  setSpotifyConnectedUi(true);
-  els.spotifyStatus.textContent = data.is_playing ? 'Afspiller' : 'Sat på pause';
-  els.spotifyDevice.textContent = deviceName;
-  els.spotifyEmpty.hidden = true;
-  els.spotifyNowPlaying.hidden = false;
-  els.spotifyPlaybackState.textContent = data.is_playing ? 'Afspiller nu' : 'På pause';
-  els.spotifyTrackTitle.textContent = title;
-  els.spotifyArtist.textContent = artist;
-  els.spotifyTrackLink.href = externalUrl;
-  els.spotifyCover.src = cover;
-  els.spotifyCover.alt = cover ? `Cover til ${title}` : 'Intet albumcover';
-  els.spotifyTrackLink.hidden = !cover;
-  els.spotifyCover.hidden = !cover;
-  els.spotifyNowPlaying.classList.toggle('no-cover', !cover);
-  updateSpotifyProgress();
-}
-
-async function beginSpotifyLogin() {
-  const verifier = spotifyRandomString(64);
-  const challenge = await spotifySha256Base64Url(verifier);
-  const state = spotifyRandomString(24);
-
-  sessionStorage.setItem(SPOTIFY.verifierStorageKey, verifier);
-  sessionStorage.setItem(SPOTIFY.stateStorageKey, state);
-
-  const params = new URLSearchParams({
-    client_id: SPOTIFY.clientId,
-    response_type: 'code',
-    redirect_uri: SPOTIFY.redirectUri,
-    scope: SPOTIFY.scopes.join(' '),
-    code_challenge_method: 'S256',
-    code_challenge: challenge,
-    state,
-  });
-
-  window.location.assign(`${SPOTIFY.authorizeUrl}?${params.toString()}`);
-}
-
-async function exchangeSpotifyCode(code) {
-  const verifier = sessionStorage.getItem(SPOTIFY.verifierStorageKey);
-  if (!verifier) throw new Error('Spotify-login kunne ikke færdiggøres. Prøv at forbinde igen.');
-
-  const body = new URLSearchParams({
-    client_id: SPOTIFY.clientId,
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: SPOTIFY.redirectUri,
-    code_verifier: verifier,
-  });
-
-  const response = await fetch(SPOTIFY.tokenUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error_description || payload.error || 'Spotify afviste login.');
-  saveSpotifyTokens(payload);
-  sessionStorage.removeItem(SPOTIFY.verifierStorageKey);
-  sessionStorage.removeItem(SPOTIFY.stateStorageKey);
-}
-
-async function refreshSpotifyToken() {
-  if (spotifyRefreshPromise) return spotifyRefreshPromise;
-
-  spotifyRefreshPromise = (async () => {
-    const existing = getSpotifyTokens();
-    if (!existing?.refreshToken) throw new Error('Spotify skal forbindes igen.');
-
-    const body = new URLSearchParams({
-      client_id: SPOTIFY.clientId,
-      grant_type: 'refresh_token',
-      refresh_token: existing.refreshToken,
-    });
-
-    const response = await fetch(SPOTIFY.tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      clearSpotifyAuth();
-      throw new Error(payload.error_description || 'Spotify-login er udløbet. Forbind igen.');
-    }
-
-    return saveSpotifyTokens(payload, existing).accessToken;
-  })();
-
-  try {
-    return await spotifyRefreshPromise;
-  } finally {
-    spotifyRefreshPromise = null;
-  }
-}
-
-async function getSpotifyAccessToken(forceRefresh = false) {
-  const tokens = getSpotifyTokens();
-  if (!tokens?.accessToken) return null;
-  if (forceRefresh || Date.now() >= Number(tokens.expiresAt || 0)) return refreshSpotifyToken();
-  return tokens.accessToken;
-}
-
-async function spotifyFetch(path, retry = true) {
-  const token = await getSpotifyAccessToken();
-  if (!token) return null;
-
-  const response = await fetch(`${SPOTIFY.apiBase}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (response.status === 401 && retry) {
-    await getSpotifyAccessToken(true);
-    return spotifyFetch(path, false);
-  }
-
-  return response;
-}
-
-async function updateSpotifyPlayback() {
-  if (spotifyPolling || !getSpotifyTokens()) return;
-  spotifyPolling = true;
-
-  try {
-    const response = await spotifyFetch('/me/player');
-    if (!response) return;
-
-    if (response.status === 204) {
-      renderSpotifyIdle();
-      return;
-    }
-
-    if (response.status === 403) {
-      renderSpotifyIdle('Spotify afviste adgangen. Kontrollér appens brugeradgang i Spotify Developer Dashboard.');
-      return;
-    }
-
-    if (response.status === 429) {
-      renderSpotifyIdle('Spotify beder appen vente et øjeblik. Visningen prøver igen automatisk.');
-      return;
-    }
-
-    if (!response.ok) throw new Error(`Spotify svarede med fejl ${response.status}.`);
-    renderSpotifyPlayback(await response.json());
-  } catch (error) {
-    log(`Spotify-fejl: ${error.message}`);
-    els.spotifyStatus.textContent = 'Forbindelsesfejl';
-    els.spotifyDevice.textContent = error.message;
-  } finally {
-    spotifyPolling = false;
-  }
-}
-
-function startSpotifyPolling() {
-  stopSpotifyPolling();
-  setSpotifyConnectedUi(true);
-  updateSpotifyPlayback();
-  spotifyPollTimer = setInterval(updateSpotifyPlayback, SPOTIFY.pollIntervalMs);
-  spotifyProgressTimer = setInterval(updateSpotifyProgress, 1000);
-}
-
-function stopSpotifyPolling() {
-  clearInterval(spotifyPollTimer);
-  clearInterval(spotifyProgressTimer);
-  spotifyPollTimer = null;
-  spotifyProgressTimer = null;
-  spotifyPolling = false;
-}
-
-async function initializeSpotify() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const error = params.get('error');
-  const returnedState = params.get('state');
-
-  if (error) {
-    history.replaceState({}, document.title, SPOTIFY.redirectUri);
-    renderSpotifyDisconnected();
-    showToast('Spotify-login blev annulleret');
-    return;
-  }
-
-  if (code) {
-    const expectedState = sessionStorage.getItem(SPOTIFY.stateStorageKey);
-    history.replaceState({}, document.title, SPOTIFY.redirectUri);
-
-    if (!expectedState || returnedState !== expectedState) {
-      clearSpotifyAuth();
-      showToast('Spotify-login blev afvist af sikkerhedshensyn');
-      return;
-    }
-
-    els.spotifyStatus.textContent = 'Færdiggør login';
-    els.spotifyDevice.textContent = 'Henter adgang fra Spotify';
-    try {
-      await exchangeSpotifyCode(code);
-      showToast('Spotify er forbundet');
-    } catch (exchangeError) {
-      clearSpotifyAuth();
-      log(`Spotify-loginfejl: ${exchangeError.message}`);
-      showToast(exchangeError.message);
-      return;
-    }
-  }
-
-  if (getSpotifyTokens()) startSpotifyPolling();
-  else renderSpotifyDisconnected();
-}
-
-
-
 function setSettingsOpen(open) {
   if (!els.settingsPanel || !els.settingsBackdrop) return;
   els.settingsPanel.hidden = !open;
@@ -1285,18 +922,6 @@ els.installButton?.addEventListener('click', installApp);
 els.settingsButton?.addEventListener('click', () => setSettingsOpen(true));
 els.closeSettingsButton?.addEventListener('click', () => setSettingsOpen(false));
 els.settingsBackdrop?.addEventListener('click', () => setSettingsOpen(false));
-els.spotifyConnectButton.addEventListener('click', async () => {
-  try {
-    await beginSpotifyLogin();
-  } catch (error) {
-    log(`Spotify-loginfejl: ${error.message}`);
-    showToast(error.message);
-  }
-});
-els.spotifyDisconnectButton.addEventListener('click', () => {
-  clearSpotifyAuth();
-  showToast('Spotify er afbrudt');
-});
 
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') setSettingsOpen(false);
@@ -1337,8 +962,6 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(error => log(`Service worker-fejl: ${error.message}`));
   });
 }
-
-initializeSpotify();
 
 if (!navigator.bluetooth) {
   setStatus('disconnected', 'Web Bluetooth mangler', 'Åbn siden i Microsoft Edge eller Google Chrome');
