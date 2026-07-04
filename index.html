@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050a08">
+  <meta name="description" content="Live træningsdashboard med watt, kadence, puls, historik og Spotify til Wahoo KICKR.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>KICKR Live</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="spotify-controls.css">
+</head>
+<body>
+  <main class="dashboard">
+    <header class="dashboard-header">
+      <div class="brand-block">
+        <h1>KICKR <span>Live</span></h1>
+        <div class="active-session">
+          <small>Aktiv træning</small>
+          <strong>MyWhoosh · Free ride</strong>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="connection-pill" aria-live="polite">
+          <span id="statusDot" class="status-dot disconnected"></span>
+          <div>
+            <strong id="statusText">Ikke forbundet</strong>
+            <small id="deviceText">Tryk på Forbind KICKR</small>
+          </div>
+        </div>
+        <button id="installButton" class="header-button install-button" type="button" hidden>Installér</button>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Indstillinger" title="Indstillinger">⚙</button>
+        <button id="fullscreenButton" class="icon-button" type="button" aria-label="Fuld skærm" title="Fuld skærm">⛶</button>
+      </div>
+    </header>
+
+    <section class="dashboard-grid">
+      <article class="panel power-panel">
+        <div class="power-topline">
+          <span id="powerZone" class="zone-pill">Venter på data</span>
+          <span id="dataSource" class="data-source">Datakilde: --</span>
+        </div>
+
+        <div class="power-value" aria-label="Aktuel effekt">
+          <span id="powerValue">--</span><span class="power-unit">W</span>
+        </div>
+
+        <section class="comparison-card" aria-label="Live sammenligning">
+          <span id="comparisonKicker" class="comparison-kicker">Historik indlæses…</span>
+          <div class="comparison-values">
+            <div>
+              <strong id="lastRideDelta">—</strong>
+              <span id="lastRideCaption">vs sidste tur</span>
+            </div>
+            <div>
+              <strong id="thirtyDayDelta">—</strong>
+              <span id="thirtyDayCaption">vs 30 dages snit</span>
+            </div>
+          </div>
+          <div id="trendText" class="trend-line">Tilføj referenceværdier i indstillinger</div>
+        </section>
+      </article>
+
+      <aside class="metric-stack">
+        <article class="panel metric-panel cadence-panel">
+          <div>
+            <span class="metric-label">Kadence</span>
+            <div class="metric-value"><span id="cadenceValue">--</span><small>rpm</small></div>
+          </div>
+          <div class="metric-ring cadence-ring" aria-hidden="true"><span id="cadenceRing"></span></div>
+        </article>
+
+        <article class="panel metric-panel pulse-panel">
+          <div>
+            <span class="metric-label">Puls</span>
+            <div class="metric-value"><span id="heartRateValue">--</span><small>bpm</small></div>
+            <span id="heartRateState" class="metric-state">Pulsmåler ikke forbundet</span>
+          </div>
+          <div class="metric-ring pulse-ring" aria-hidden="true"><span id="heartRateRing"></span></div>
+        </article>
+
+        <article class="panel metric-panel smooth-power-panel">
+          <div>
+            <span class="metric-label">Effekt · 3 sek.</span>
+            <div class="metric-value"><span id="power3s">--</span><small>W</small></div>
+          </div>
+          <div class="metric-ring power-ring" aria-hidden="true"><span id="powerRing"></span></div>
+        </article>
+      </aside>
+
+      <article class="panel chart-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="metric-label">Effekt · seneste 10 minutter</span>
+            <strong>Gns. <span id="chartAverage">--</span> W</strong>
+          </div>
+          <span id="powerHint">Venter på data</span>
+        </div>
+        <svg class="power-chart" viewBox="0 0 800 210" preserveAspectRatio="none" role="img" aria-label="Graf over watt de seneste 10 minutter">
+          <defs>
+            <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#65ec9a" stop-opacity=".35"/>
+              <stop offset="100%" stop-color="#65ec9a" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <line x1="0" y1="35" x2="800" y2="35" class="grid-line"/>
+          <line x1="0" y1="105" x2="800" y2="105" class="grid-line"/>
+          <line x1="0" y1="175" x2="800" y2="175" class="grid-line"/>
+          <path id="powerChartArea" class="chart-area" d=""/>
+          <path id="powerChartLine" class="chart-line" d=""/>
+          <circle id="powerChartDot" class="chart-dot" cx="0" cy="0" r="5" hidden/>
+        </svg>
+        <span class="chart-now">10 min</span><div class="chart-scale"><span>300</span><span>200</span><span>100</span></div>
+      </article>
+
+      <article class="panel time-panel">
+        <span class="metric-label">Tid forløbet</span>
+        <strong id="elapsedTime">00:00</strong>
+        <div class="time-progress"><span id="timeProgress"></span></div>
+        <div class="time-stats">
+          <div><span>Gennemsnit</span><strong><span id="averagePower">--</span> W</strong></div>
+          <div><span>Maks.</span><strong><span id="maxPower">--</span> W</strong></div>
+        </div>
+      </article>
+
+      <section class="panel spotify-card" aria-labelledby="spotifyHeading">
+        <div class="spotify-brand-row">
+          <div>
+            <span id="spotifyHeading" class="spotify-kicker">Spotify · afspiller nu</span>
+            <strong id="spotifyStatus">Ikke forbundet</strong>
+            <small id="spotifyDevice">Viser det, der afspilles</small>
+          </div>
+          <span class="spotify-logo">●</span>
+        </div>
+
+        <div id="spotifyEmpty" class="spotify-empty">Forbind Spotify for at vise musikken.</div>
+
+        <div id="spotifyNowPlaying" class="spotify-now-playing" hidden>
+          <a id="spotifyTrackLink" class="spotify-cover-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Åbn i Spotify">
+            <img id="spotifyCover" class="spotify-cover" alt="Albumcover">
+          </a>
+          <div class="spotify-details">
+            <span id="spotifyPlaybackState" class="spotify-playback-state">Afspiller</span>
+            <strong id="spotifyTrackTitle">–</strong>
+            <span id="spotifyArtist">–</span>
+            <div class="spotify-progress" aria-hidden="true"><span id="spotifyProgressFill"></span></div>
+            <div class="spotify-time"><span id="spotifyElapsed">0:00</span><span id="spotifyDuration">0:00</span></div>
+          </div>
+        </div>
+
+        <div id="spotifyControlMount">
+          <section class="spotify-controller" aria-label="Spotify styring" aria-busy="false">
+            <div id="spotifyPermissionNotice" class="spotify-permission-notice" role="status" hidden>
+              <span>Spotify skal godkendes igen én gang for at aktivere styring.</span>
+              <button id="spotifyReconnectButton" type="button">Godkend styring</button>
+            </div>
+
+            <div class="spotify-transport" role="group" aria-label="Afspilningsknapper">
+              <button class="spotify-control-button" id="spotifyPreviousButton" type="button" aria-label="Forrige nummer" title="Forrige">
+                <span class="spotify-control-icon" aria-hidden="true">⏮</span><span>Forrige</span>
+              </button>
+              <button class="spotify-control-button spotify-control-primary" id="spotifyPlayButton" type="button" aria-label="Start eller fortsæt" aria-pressed="false" title="Start">
+                <span class="spotify-control-icon" aria-hidden="true">▶</span><span>Start</span>
+              </button>
+              <button class="spotify-control-button" id="spotifyPauseButton" type="button" aria-label="Pause" aria-pressed="false" title="Pause">
+                <span class="spotify-control-icon" aria-hidden="true">⏸</span><span>Pause</span>
+              </button>
+              <button class="spotify-control-button" id="spotifyStopButton" type="button" aria-label="Stop og gå til starten" title="Stop">
+                <span class="spotify-control-icon" aria-hidden="true">■</span><span>Stop</span>
+              </button>
+              <button class="spotify-control-button" id="spotifyNextButton" type="button" aria-label="Næste nummer" title="Næste">
+                <span class="spotify-control-icon" aria-hidden="true">⏭</span><span>Næste</span>
+              </button>
+            </div>
+
+            <div class="spotify-volume-row">
+              <button id="spotifyVolumeDownButton" class="spotify-volume-step" type="button" aria-label="Skru ned">−</button>
+              <span class="spotify-speaker" aria-hidden="true">🔊</span>
+              <input id="spotifyVolumeSlider" type="range" min="0" max="100" step="1" value="50" aria-label="Spotify lydstyrke" aria-valuetext="50 procent">
+              <output id="spotifyVolumeValue" for="spotifyVolumeSlider">50%</output>
+              <button id="spotifyVolumeUpButton" class="spotify-volume-step" type="button" aria-label="Skru op">+</button>
+            </div>
+
+            <div id="spotifyControlStatus" class="spotify-control-status" role="status" aria-live="polite" aria-atomic="true">
+              Forbind Spotify og start afspilning på en enhed.
+            </div>
+          </section>
+        </div>
+
+        <div class="spotify-actions">
+          <button id="spotifyConnectButton" class="spotify-button" type="button">Forbind Spotify</button>
+        </div>
+      </section>
+    </section>
+
+    <footer class="action-bar">
+      <div class="action-group">
+        <button id="connectButton" class="primary-button" type="button">Forbind KICKR</button>
+        <button id="disconnectButton" class="quiet-button" type="button" hidden>Afbryd KICKR</button>
+        <button id="heartRateConnectButton" class="secondary-button" type="button">Forbind puls</button>
+        <button id="heartRateDisconnectButton" class="quiet-button" type="button" hidden>Afbryd puls</button>
+        <button id="resetButton" class="quiet-button" type="button">Nulstil tur</button>
+      </div>
+      <span class="read-only-note">Kun aflæsning · MyWhoosh styrer modstanden</span>
+    </footer>
+
+    <aside id="settingsPanel" class="settings-panel" hidden>
+      <div class="settings-header">
+        <div>
+          <p class="eyebrow">KICKR Live</p>
+          <h2>Indstillinger</h2>
+        </div>
+        <button id="closeSettingsButton" class="icon-button" type="button" aria-label="Luk indstillinger">×</button>
+      </div>
+
+      <section class="settings-section">
+        <h3>Træningshistorik</h3>
+        <p>Appen henter automatisk dine tidligere træninger fra <code>data/training-history.json</code>. Den seneste tur og det varighedsvægtede 30-dages-snit bruges i live-sammenligningen.</p>
+        <div class="history-status-card" aria-live="polite">
+          <strong id="historyStatus">Indlæser historik…</strong>
+          <span id="historySummary">Venter på filen</span>
+        </div>
+        <button id="reloadHistoryButton" class="secondary-button wide-button" type="button">Genindlæs historik</button>
+        <p class="settings-note">Når filen er erstattet på GitHub, kan du trykke her eller genstarte appen. Der bruges en cachefri hentning, så gamle tal ikke bliver hængende.</p>
+      </section>
+
+      <section class="settings-section">
+        <h3>Spotify</h3>
+        <p>Afbryd forbindelsen til Spotify og fjern de gemte loginoplysninger fra denne enhed.</p>
+        <button id="spotifyDisconnectButton" class="quiet-button wide-button" type="button" hidden>Afbryd Spotify</button>
+      </section>
+
+      <section class="settings-section">
+        <h3>Test og fejlfinding</h3>
+        <button id="demoButton" class="secondary-button wide-button" type="button">Start testvisning</button>
+        <p class="settings-note">Testvisningen viser det færdige dashboard med simulerede watt-, kadence- og pulsdata.</p>
+        <details class="debug-card">
+          <summary>Teknisk log</summary>
+          <pre id="debugLog">Klar.</pre>
+        </details>
+      </section>
+    </aside>
+    <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Disse to funktioner manglede i den tidligere dashboard-udgave. -->
+  <script>
+    function log(message) {
+      const target = document.querySelector('#debugLog');
+      if (!target) return;
+      const stamp = new Date().toLocaleTimeString('da-DK', { hour12: false });
+      target.textContent = `[${stamp}] ${message}\n${target.textContent}`.slice(0, 7000);
+    }
+
+    function showToast(message) {
+      const toast = document.querySelector('#toast');
+      if (!toast) return;
+      window.clearTimeout(window.__kickrToastTimer);
+      toast.textContent = message;
+      toast.classList.add('show');
+      window.__kickrToastTimer = window.setTimeout(() => toast.classList.remove('show'), 3400);
+    }
+  </script>
+  <script src="app.js" defer></script>
+  <script src="spotify.js" defer></script>
+</body>
+</html>
