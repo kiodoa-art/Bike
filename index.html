@@ -154,13 +154,13 @@
           </div>
         </div>
 
+        <div id="spotifyControlMount"></div>
+
         <div class="spotify-actions">
           <button id="spotifyConnectButton" class="spotify-button" type="button">Forbind Spotify</button>
           <button id="spotifyDisconnectButton" class="quiet-button" type="button" hidden>Afbryd Spotify</button>
         </div>
       </section>
-
-      <section id="spotifyControlMount" class="panel spotify-controls-panel" aria-label="Spotify styring"></section>
     </section>
 
     <footer class="action-bar">
@@ -209,6 +209,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <!-- Disse to funktioner manglede i den tidligere dashboard-udgave. -->
   <script>
     function log(message) {
       const target = document.querySelector('#debugLog');
