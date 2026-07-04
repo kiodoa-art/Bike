@@ -205,6 +205,23 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script>
+    function log(message) {
+      const target = document.querySelector('#debugLog');
+      if (!target) return;
+      const stamp = new Date().toLocaleTimeString('da-DK', { hour12: false });
+      target.textContent = `[${stamp}] ${message}\n${target.textContent}`.slice(0, 7000);
+    }
+
+    function showToast(message) {
+      const toast = document.querySelector('#toast');
+      if (!toast) return;
+      window.clearTimeout(window.__kickrToastTimer);
+      toast.textContent = message;
+      toast.classList.add('show');
+      window.__kickrToastTimer = window.setTimeout(() => toast.classList.remove('show'), 3400);
+    }
+  </script>
   <script src="app.js" defer></script>
 </body>
 </html>
