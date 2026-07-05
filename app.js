@@ -80,6 +80,10 @@ const els = {
   historyStatus: document.querySelector('#historyStatus'),
   historySummary: document.querySelector('#historySummary'),
   reloadHistoryButton: document.querySelector('#reloadHistoryButton'),
+  stopRideButton: document.querySelector('#stopRideButton'),
+  chooseRideFolderButton: document.querySelector('#chooseRideFolderButton'),
+  rideFolderStatus: document.querySelector('#rideFolderStatus'),
+  rideSaveStatus: document.querySelector('#rideSaveStatus'),
 };
 
 let bluetoothDevice = null;
@@ -96,6 +100,15 @@ let lastHeartRatePacketAt = 0;
 let lastChartRenderAt = 0;
 let lastHeartChartRenderAt = 0;
 let ftmsPowerEnabled = false;
+let currentRide = null;
+let rideLoggingTimer = null;
+let rideDirectoryHandle = null;
+let rideStartArmed = true;
+
+const RIDE_FILE_VERSION = 1;
+const RIDE_DB_NAME = 'kickr-live-storage';
+const RIDE_DB_STORE = 'handles';
+const RIDE_DIRECTORY_KEY = 'ride-directory';
 
 const HISTORY_URL = './data/training-history.json';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -533,10 +546,310 @@ function setHeartRateStatus(state, title, subtitle) {
 }
 
 function ensureSessionStarted(power, cadence, speed = null) {
-  if (!session.startedAt && ((power ?? 0) > 0 || (cadence ?? 0) > 0 || (speed ?? 0) > 0)) {
+  const moving = (power ?? 0) > 0 || (cadence ?? 0) > 0 || (speed ?? 0) > 0;
+  if (!moving) {
+    if (!session.startedAt && !currentRide) rideStartArmed = true;
+    return;
+  }
+  if (!session.startedAt && rideStartArmed) {
+    rideStartArmed = false;
     session.startedAt = Date.now();
+    startRideRecording(session.startedAt);
     log('Turdata startede ved første registrerede bevægelse.');
   }
+}
+
+function createRideId(startedAt) {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `ride-${startedAt}-${Math.random().toString(16).slice(2)}`;
+}
+
+function nullableNumber(value, digits = null) {
+  if (!Number.isFinite(value)) return null;
+  return digits === null ? value : Number(value.toFixed(digits));
+}
+
+function setRideActiveUi(active) {
+  if (!els.stopRideButton) return;
+  els.stopRideButton.hidden = !active;
+  els.stopRideButton.disabled = !active;
+}
+
+function recordRideSample(force = false) {
+  if (!currentRide || currentRide.status !== 'active') return;
+
+  const now = Date.now();
+  const elapsedMs = Math.max(0, now - currentRide.startedAtMs);
+  const wholeSecond = Math.floor(elapsedMs / 1000);
+  if (wholeSecond === currentRide.lastSampleSecond) {
+    if (!force || !currentRide.samples.length) return;
+    currentRide.samples.pop();
+  }
+
+  currentRide.samples.push({
+    t: Number((elapsedMs / 1000).toFixed(3)),
+    timestamp: new Date(now).toISOString(),
+    power: nullableNumber(session.currentPower),
+    heartRate: nullableNumber(session.currentHeartRate),
+    cadence: nullableNumber(session.currentCadence),
+    speedKmh: nullableNumber(session.currentSpeedKph, 2),
+    distanceKm: nullableNumber(Math.max(0, session.distanceMeters) / 1000, 4),
+  });
+  currentRide.lastSampleSecond = wholeSecond;
+}
+
+function stopRideLogging() {
+  if (rideLoggingTimer !== null) {
+    window.clearInterval(rideLoggingTimer);
+    rideLoggingTimer = null;
+  }
+}
+
+function startRideRecording(startedAtMs = Date.now()) {
+  if (currentRide || rideLoggingTimer !== null) return;
+
+  currentRide = {
+    version: RIDE_FILE_VERSION,
+    rideId: createRideId(startedAtMs),
+    startTime: new Date(startedAtMs).toISOString(),
+    startedAtMs,
+    endTime: null,
+    endedAtMs: null,
+    status: 'active',
+    samples: [],
+    lastSampleSecond: -1,
+  };
+  recordRideSample(true);
+  rideLoggingTimer = window.setInterval(recordRideSample, 1000);
+  setRideActiveUi(true);
+  if (els.rideSaveStatus) els.rideSaveStatus.textContent = 'Tur optages';
+  log(`Ride recording startet: ${currentRide.rideId}`);
+}
+
+function sampleValues(ride, key) {
+  return ride.samples.map(sample => sample[key]).filter(Number.isFinite);
+}
+
+function averageOrNull(values) {
+  if (!values.length) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function maximumOrNull(values) {
+  return values.length ? values.reduce((maximum, value) => Math.max(maximum, value), values[0]) : null;
+}
+
+function buildRideFile(ride) {
+  const power = sampleValues(ride, 'power');
+  const heartRate = sampleValues(ride, 'heartRate');
+  const cadence = sampleValues(ride, 'cadence');
+  return {
+    version: ride.version,
+    rideId: ride.rideId,
+    startTime: ride.startTime,
+    endTime: ride.endTime,
+    summary: {
+      durationSec: Math.max(0, Math.round((ride.endedAtMs - ride.startedAtMs) / 1000)),
+      distanceKm: nullableNumber(Math.max(0, session.distanceMeters) / 1000, 4),
+      avgPower: averageOrNull(power),
+      maxPower: maximumOrNull(power),
+      avgHeartRate: averageOrNull(heartRate),
+      maxHeartRate: maximumOrNull(heartRate),
+      avgCadence: averageOrNull(cadence),
+      maxCadence: maximumOrNull(cadence),
+    },
+    samples: ride.samples,
+  };
+}
+
+function rideFilename(startTime) {
+  const date = new Date(startTime);
+  const pad = value => String(value).padStart(2, '0');
+  return `ride-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}.json`;
+}
+
+function openRideDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) {
+      reject(new Error('IndexedDB understøttes ikke'));
+      return;
+    }
+    const request = indexedDB.open(RIDE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(RIDE_DB_STORE)) {
+        request.result.createObjectStore(RIDE_DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('IndexedDB kunne ikke åbnes'));
+  });
+}
+
+async function readStoredRideDirectory() {
+  const db = await openRideDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction(RIDE_DB_STORE, 'readonly').objectStore(RIDE_DB_STORE).get(RIDE_DIRECTORY_KEY);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error('Gemmemappen kunne ikke læses'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function storeRideDirectory(handle) {
+  const db = await openRideDatabase();
+  try {
+    await new Promise((resolve, reject) => {
+      const request = db.transaction(RIDE_DB_STORE, 'readwrite').objectStore(RIDE_DB_STORE).put(handle, RIDE_DIRECTORY_KEY);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error || new Error('Gemmemappen kunne ikke huskes'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function directoryPermission(handle, request = false) {
+  if (!handle) return false;
+  const options = { mode: 'readwrite' };
+  if (typeof handle.queryPermission !== 'function') return true;
+  if (await handle.queryPermission(options) === 'granted') return true;
+  return request && typeof handle.requestPermission === 'function'
+    ? (await handle.requestPermission(options)) === 'granted'
+    : false;
+}
+
+function fileSystemAccessSupported() {
+  return typeof window.showDirectoryPicker === 'function';
+}
+
+async function updateRideFolderStatus() {
+  if (!els.rideFolderStatus) return;
+  if (!fileSystemAccessSupported()) {
+    els.rideFolderStatus.textContent = 'Mappevalg understøttes ikke – ture downloades i stedet.';
+    if (els.chooseRideFolderButton) els.chooseRideFolderButton.hidden = true;
+    return;
+  }
+  if (!rideDirectoryHandle) {
+    els.rideFolderStatus.textContent = 'Ingen gemmemappe valgt';
+    return;
+  }
+  const granted = await directoryPermission(rideDirectoryHandle, false).catch(() => false);
+  els.rideFolderStatus.textContent = granted
+    ? `Valgt mappe: ${rideDirectoryHandle.name}`
+    : `Godkend adgang til: ${rideDirectoryHandle.name}`;
+  if (els.chooseRideFolderButton) {
+    els.chooseRideFolderButton.textContent = granted ? 'Vælg en anden gemmemappe' : 'Godkend gemmemappe';
+  }
+}
+
+function downloadRideJson(json, filename) {
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function saveCompletedRide({ requestPermission = false } = {}) {
+  if (!currentRide || currentRide.status !== 'completed') return false;
+  const filename = rideFilename(currentRide.startTime);
+  const json = `${JSON.stringify(buildRideFile(currentRide), null, 2)}\n`;
+
+  if (!fileSystemAccessSupported()) {
+    downloadRideJson(json, filename);
+  } else {
+    if (!rideDirectoryHandle) {
+      showToast('Vælg gemmemappe først');
+      if (els.rideSaveStatus) els.rideSaveStatus.textContent = 'Turen er stoppet – vælg en gemmemappe';
+      return false;
+    }
+    const permitted = await directoryPermission(rideDirectoryHandle, requestPermission).catch(() => false);
+    if (!permitted) {
+      showToast('Godkend gemmemappen igen');
+      if (els.rideSaveStatus) els.rideSaveStatus.textContent = 'Turen er stoppet – godkend gemmemappen';
+      await updateRideFolderStatus();
+      return false;
+    }
+    const fileHandle = await rideDirectoryHandle.getFileHandle(filename, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(json);
+    await writable.close();
+  }
+
+  log(`Tur gemt: ${filename}`);
+  showToast(`Tur gemt · ${filename}`);
+  if (els.rideSaveStatus) els.rideSaveStatus.textContent = `Tur gemt: ${filename}`;
+  currentRide = null;
+  resetSession(false);
+  return true;
+}
+
+async function stopRide() {
+  if (!currentRide || currentRide.status !== 'active') return;
+  recordRideSample(true);
+  stopRideLogging();
+  currentRide.endedAtMs = Date.now();
+  currentRide.endTime = new Date(currentRide.endedAtMs).toISOString();
+  currentRide.status = 'completed';
+  setRideActiveUi(false);
+  log(`Tur afsluttet med ${currentRide.samples.length} samples.`);
+
+  try {
+    await saveCompletedRide({ requestPermission: true });
+  } catch (error) {
+    log(`Kunne ikke gemme tur: ${error.message}`);
+    showToast('Turen kunne ikke gemmes');
+    if (els.rideSaveStatus) els.rideSaveStatus.textContent = `Turen er stoppet – gemmefejl: ${error.message}`;
+  }
+}
+
+async function chooseRideFolder() {
+  if (!fileSystemAccessSupported()) return;
+  try {
+    const existingPermission = rideDirectoryHandle
+      ? await directoryPermission(rideDirectoryHandle, false)
+      : false;
+    if (rideDirectoryHandle && !existingPermission && await directoryPermission(rideDirectoryHandle, true)) {
+      await updateRideFolderStatus();
+      showToast(`Gemmemappe godkendt · ${rideDirectoryHandle.name}`);
+      if (currentRide?.status === 'completed') await saveCompletedRide();
+      return;
+    }
+    rideDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    try {
+      await storeRideDirectory(rideDirectoryHandle);
+    } catch (error) {
+      log(`Gemmemappen kunne ikke huskes: ${error.message}`);
+    }
+    await updateRideFolderStatus();
+    showToast(`Gemmemappe valgt · ${rideDirectoryHandle.name}`);
+    if (currentRide?.status === 'completed') await saveCompletedRide({ requestPermission: true });
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      log(`Mappefejl: ${error.message}`);
+      showToast('Gemmemappen kunne ikke vælges');
+    }
+  }
+}
+
+async function restoreRideDirectory() {
+  if (!fileSystemAccessSupported()) {
+    await updateRideFolderStatus();
+    return;
+  }
+  try {
+    rideDirectoryHandle = await readStoredRideDirectory();
+  } catch (error) {
+    log(`Kunne ikke genbruge gemmemappen: ${error.message}`);
+  }
+  await updateRideFolderStatus();
 }
 
 function updatePower(power) {
@@ -637,6 +950,14 @@ function updateElapsed() {
 }
 
 function resetSession(showMessage = true) {
+  if (currentRide) {
+    if (showMessage) {
+      showToast(currentRide.status === 'active'
+        ? 'Stop turen, før du nulstiller'
+        : 'Gem den afsluttede tur, før du nulstiller');
+    }
+    return;
+  }
   session.startedAt = null;
   session.powerSamples = [];
   session.power3sSamples = [];
@@ -1151,6 +1472,8 @@ els.connectButton.addEventListener('click', async () => {
 
 els.disconnectButton.addEventListener('click', disconnect);
 els.resetButton.addEventListener('click', resetSession);
+els.stopRideButton?.addEventListener('click', stopRide);
+els.chooseRideFolderButton?.addEventListener('click', chooseRideFolder);
 els.heartRateConnectButton?.addEventListener('click', async () => {
   stopDemo();
   try {
@@ -1180,6 +1503,7 @@ document.addEventListener('visibilitychange', async () => {
 
 window.addEventListener('beforeunload', () => {
   reconnectCancelled = true;
+  stopRideLogging();
   if (bluetoothDevice?.gatt?.connected) bluetoothDevice.gatt.disconnect();
   if (heartRateDevice?.gatt?.connected) heartRateDevice.gatt.disconnect();
 });
@@ -1203,6 +1527,8 @@ loadTrainingHistory();
 updateComparisons();
 updatePowerChart(true);
 updateInstallButton();
+setRideActiveUi(false);
+restoreRideDirectory();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
