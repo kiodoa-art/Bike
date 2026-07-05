@@ -57,6 +57,8 @@ const els = {
   heartRateDisconnectButton: document.querySelector('#heartRateDisconnectButton'),
   heartRateValue: document.querySelector('#heartRateValue'),
   heartRateState: document.querySelector('#heartRateState'),
+  heartStatusDot: document.querySelector('#heartStatusDot'),
+  heartRateConnectionText: document.querySelector('#heartRateConnectionText'),
   cadenceRing: document.querySelector('#cadenceRing'),
   heartRateRing: document.querySelector('#heartRateRing'),
   heartChartAverage: document.querySelector('#heartChartAverage'),
@@ -524,6 +526,12 @@ function setStatus(state, title, subtitle) {
   els.connectButton.disabled = state === 'connecting';
 }
 
+function setHeartRateStatus(state, title, subtitle) {
+  els.heartStatusDot.className = `status-dot ${state}`;
+  els.heartRateState.textContent = title;
+  els.heartRateConnectionText.textContent = subtitle;
+}
+
 function ensureSessionStarted(power, cadence, speed = null) {
   if (!session.startedAt && ((power ?? 0) > 0 || (cadence ?? 0) > 0 || (speed ?? 0) > 0)) {
     session.startedAt = Date.now();
@@ -579,7 +587,11 @@ function updateHeartRate(heartRate) {
   session.heartRateSamples.push({ time: now, heartRate: cleanHeartRate });
   session.heartRateSamples = session.heartRateSamples.filter(sample => now - sample.time <= 600000);
   els.heartRateValue.textContent = String(cleanHeartRate);
-  els.heartRateState.textContent = heartRateDevice?.name || 'Pulsmåler forbundet';
+  if (demoTimer) {
+    setHeartRateStatus('connected', 'Simuleret pulsmåler', 'Testdata');
+  } else {
+    setHeartRateStatus('connected', heartRateDevice?.name || 'Pulsmåler', 'Forbundet');
+  }
   setRing(els.heartRateRing, cleanHeartRate, 200);
   updateHeartRateChart();
 }
@@ -614,7 +626,11 @@ function updateElapsed() {
   if (session.currentHeartRate !== null && Date.now() - lastHeartRatePacketAt > 6000) {
     session.currentHeartRate = null;
     els.heartRateValue.textContent = '--';
-    els.heartRateState.textContent = heartRateDevice?.gatt?.connected ? 'Venter på pulsdata' : 'Pulsmåler ikke forbundet';
+    if (heartRateDevice?.gatt?.connected) {
+      setHeartRateStatus('connected', heartRateDevice.name || 'Pulsmåler', 'Venter på pulsdata');
+    } else {
+      setHeartRateStatus('disconnected', 'Pulsmåler', 'Ikke forbundet');
+    }
     setRing(els.heartRateRing, 0, 200);
     updateHeartRateChart(true, false);
   }
@@ -922,7 +938,7 @@ function handleHeartRateMeasurement(event) {
 async function connectHeartRate() {
   if (!navigator.bluetooth) throw new Error('Web Bluetooth findes ikke i denne browser.');
   heartRateReconnectCancelled = false;
-  els.heartRateState.textContent = 'Vælg pulsmåleren';
+  setHeartRateStatus('connecting', 'Pulsmåler', 'Vælg enhed');
   heartRateDevice = await navigator.bluetooth.requestDevice({
     filters: [{ services: [UUID.heartRateService] }],
     optionalServices: [UUID.heartRateService],
@@ -933,13 +949,13 @@ async function connectHeartRate() {
 
 async function connectHeartRateGatt() {
   if (!heartRateDevice) throw new Error('Ingen pulsmåler er valgt.');
-  els.heartRateState.textContent = 'Forbinder pulsmåler';
+  setHeartRateStatus('connecting', heartRateDevice.name || 'Pulsmåler', 'Forbinder');
   const server = heartRateDevice.gatt.connected ? heartRateDevice.gatt : await heartRateDevice.gatt.connect();
   const service = await server.getPrimaryService(UUID.heartRateService);
   heartRateCharacteristic = await service.getCharacteristic(UUID.heartRateMeasurement);
   heartRateCharacteristic.addEventListener('characteristicvaluechanged', handleHeartRateMeasurement);
   await heartRateCharacteristic.startNotifications();
-  els.heartRateState.textContent = heartRateDevice.name || 'Pulsmåler forbundet';
+  setHeartRateStatus('connected', heartRateDevice.name || 'Pulsmåler', 'Forbundet');
   els.heartRateConnectButton.hidden = true;
   els.heartRateDisconnectButton.hidden = false;
   log(`Pulsmåler forbundet: ${heartRateDevice.name || 'ukendt enhed'}.`);
@@ -948,7 +964,7 @@ async function connectHeartRateGatt() {
 
 async function handleHeartRateDisconnected() {
   if (heartRateReconnectCancelled || !heartRateDevice) return;
-  els.heartRateState.textContent = 'Pulsen blev afbrudt · prøver igen';
+  setHeartRateStatus('connecting', heartRateDevice.name || 'Pulsmåler', 'Forsøger igen');
   for (const delay of [1000, 2000, 4000, 8000]) {
     if (heartRateReconnectCancelled) return;
     await new Promise(resolve => setTimeout(resolve, delay));
@@ -961,7 +977,7 @@ async function handleHeartRateDisconnected() {
   }
   els.heartRateConnectButton.hidden = false;
   els.heartRateDisconnectButton.hidden = true;
-  els.heartRateState.textContent = 'Pulsmåler ikke forbundet';
+  setHeartRateStatus('disconnected', 'Pulsmåler', 'Ikke forbundet');
   session.currentHeartRate = null;
   els.heartRateValue.textContent = '--';
   setRing(els.heartRateRing, 0, 200);
@@ -980,7 +996,7 @@ async function disconnectHeartRate() {
   heartRateCharacteristic = null;
   session.currentHeartRate = null;
   els.heartRateValue.textContent = '--';
-  els.heartRateState.textContent = 'Pulsmåler ikke forbundet';
+  setHeartRateStatus('disconnected', 'Pulsmåler', 'Ikke forbundet');
   els.heartRateConnectButton.hidden = false;
   els.heartRateDisconnectButton.hidden = true;
   setRing(els.heartRateRing, 0, 200);
@@ -1024,7 +1040,7 @@ function startDemo() {
     updateHistoryUi();
     updateComparisons();
   }
-  els.heartRateState.textContent = 'Simuleret pulsmåler';
+  setHeartRateStatus('connected', 'Simuleret pulsmåler', 'Testdata');
   setStatus('connected', 'Testvisning', 'Simulerede tal – ikke KICKR-data');
   log('Testvisning startet.');
 
@@ -1049,7 +1065,11 @@ function stopDemo() {
   trainingReference = calculateTrainingReference(trainingHistory.activities);
   updateHistoryUi();
   updateComparisons();
-  els.heartRateState.textContent = heartRateDevice?.gatt?.connected ? (heartRateDevice.name || 'Pulsmåler forbundet') : 'Pulsmåler ikke forbundet';
+  if (heartRateDevice?.gatt?.connected) {
+    setHeartRateStatus('connected', heartRateDevice.name || 'Pulsmåler', 'Forbundet');
+  } else {
+    setHeartRateStatus('disconnected', 'Pulsmåler', 'Ikke forbundet');
+  }
   log('Testvisning stoppet.');
 }
 
@@ -1136,7 +1156,7 @@ els.heartRateConnectButton?.addEventListener('click', async () => {
   try {
     await connectHeartRate();
   } catch (error) {
-    els.heartRateState.textContent = 'Pulsmåler ikke forbundet';
+    setHeartRateStatus('disconnected', 'Pulsmåler', 'Ikke forbundet');
     log(`Pulsfejl: ${error.message}`);
     showToast(error.message);
   }

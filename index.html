@@ -28,10 +28,22 @@
 
       <div class="header-actions">
         <div class="connection-pill" aria-live="polite">
-          <span id="statusDot" class="status-dot disconnected"></span>
-          <div>
-            <strong id="statusText">Ikke forbundet</strong>
-            <small id="deviceText">Tryk på Forbind KICKR</small>
+          <div class="connection-segment">
+            <span id="statusDot" class="status-dot disconnected"></span>
+            <div class="connection-copy">
+              <span class="connection-kicker">KICKR</span>
+              <strong id="statusText">Ikke forbundet</strong>
+              <small id="deviceText">Tryk på Forbind KICKR</small>
+            </div>
+          </div>
+          <span class="connection-divider" aria-hidden="true"></span>
+          <div class="connection-segment">
+            <span id="heartStatusDot" class="status-dot disconnected"></span>
+            <div class="connection-copy">
+              <span class="connection-kicker">Puls</span>
+              <strong id="heartRateState">Pulsmåler</strong>
+              <small id="heartRateConnectionText">Ikke forbundet</small>
+            </div>
           </div>
         </div>
         <button id="installButton" class="header-button install-button" type="button" hidden>Installér</button>
@@ -47,7 +59,6 @@
           <span id="dataSource" class="data-source">Datakilde: --</span>
         </div>
 
-        <span class="power-smoothing-label">Effekt &middot; 3 sek</span>
         <div class="power-value" aria-label="3-sekunders effekt">
           <span id="powerValue">--</span><span class="power-unit">W</span>
         </div>
@@ -70,18 +81,21 @@
 
       <aside class="metric-stack">
         <article class="panel metric-panel cadence-panel">
-          <div>
+          <div class="metric-content">
             <span class="metric-label">Kadence</span>
-            <div class="metric-value"><span id="cadenceValue">--</span><small>rpm</small></div>
+            <div class="metric-value-zone">
+              <div class="metric-value"><span id="cadenceValue">--</span><small>rpm</small></div>
+            </div>
           </div>
           <div class="metric-ring cadence-ring" aria-hidden="true"><span id="cadenceRing"></span></div>
         </article>
 
         <article class="panel metric-panel pulse-panel">
-          <div>
+          <div class="metric-content">
             <span class="metric-label">Puls</span>
-            <div class="metric-value"><span id="heartRateValue">--</span><small>bpm</small></div>
-            <span id="heartRateState" class="metric-state">Pulsmåler ikke forbundet</span>
+            <div class="metric-value-zone">
+              <div class="metric-value"><span id="heartRateValue">--</span><small>bpm</small></div>
+            </div>
           </div>
           <div class="metric-ring pulse-ring" aria-hidden="true"><span id="heartRateRing"></span></div>
         </article>
@@ -221,7 +235,6 @@
         <button id="heartRateDisconnectButton" class="quiet-button" type="button" hidden>Afbryd puls</button>
         <button id="resetButton" class="quiet-button" type="button">Nulstil tur</button>
       </div>
-      <span class="read-only-note">Kun aflæsning · MyWhoosh styrer modstanden</span>
     </footer>
 
     <aside id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsHeading" tabindex="-1" hidden>

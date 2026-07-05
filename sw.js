@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v15-live-metrics';
+const CACHE_NAME = 'kickr-live-v17-dual-device-status';
 const HISTORY_PATH = './data/training-history.json';
 const ASSETS = [
   './',
