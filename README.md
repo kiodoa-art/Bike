@@ -1,5 +1,7 @@
 # KICKR Live
 
+Lyst UI-tema tilpasset Training History-appen. Dashboardets oprindelige kortstørrelser, grid og funktionalitet er bevaret.
+
 Et browserbaseret træningsdashboard til Wahoo KICKR med watt, kadence, puls,
 træningshistorik, testdata og Spotify-styring.
 

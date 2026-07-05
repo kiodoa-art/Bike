@@ -212,3 +212,42 @@
     font-size: 1.35rem;
   }
 }
+
+/* Light visual theme — control dimensions remain unchanged. */
+.spotify-controller { border-top-color: rgba(100, 116, 139, .16); }
+.spotify-permission-notice {
+  border-color: rgba(217, 119, 6, .22);
+  background: #fffbeb;
+  color: #92400e;
+}
+.spotify-permission-notice button {
+  background: #2563eb;
+  color: #fff;
+}
+.spotify-control-button {
+  border-color: rgba(100, 116, 139, .16);
+  background: #f7f9fc;
+  color: #0f172a;
+}
+.spotify-control-button:hover,
+.spotify-control-button:focus-visible,
+.spotify-control-button.is-active {
+  border-color: rgba(37, 99, 235, .42);
+  background: #edf3ff;
+}
+.spotify-control-primary {
+  border-color: rgba(29, 185, 84, .36);
+  background: #eaf8ef;
+  color: #15803d;
+}
+.spotify-volume-step {
+  border-color: rgba(100, 116, 139, .16);
+  background: #f7f9fc;
+  color: #0f172a;
+}
+.spotify-volume-row input[type="range"] { accent-color: #2563eb; }
+.spotify-volume-row output { color: #64748b; }
+.spotify-control-status { color: #94a3b8; }
+.spotify-control-status.success { color: #16a34a; }
+.spotify-control-status.warning { color: #d97706; }
+.spotify-control-status.error { color: #dc2626; }
