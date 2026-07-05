@@ -47,9 +47,9 @@ const els = {
   deviceText: document.querySelector('#deviceText'),
   powerValue: document.querySelector('#powerValue'),
   cadenceValue: document.querySelector('#cadenceValue'),
-  power3s: document.querySelector('#power3s'),
   averagePower: document.querySelector('#averagePower'),
   maxPower: document.querySelector('#maxPower'),
+  distanceValue: document.querySelector('#distanceValue'),
   elapsedTime: document.querySelector('#elapsedTime'),
   powerHint: document.querySelector('#powerHint'),
   dataSource: document.querySelector('#dataSource'),
@@ -59,7 +59,10 @@ const els = {
   heartRateState: document.querySelector('#heartRateState'),
   cadenceRing: document.querySelector('#cadenceRing'),
   heartRateRing: document.querySelector('#heartRateRing'),
-  powerRing: document.querySelector('#powerRing'),
+  heartChartAverage: document.querySelector('#heartChartAverage'),
+  heartChartLine: document.querySelector('#heartChartLine'),
+  heartChartArea: document.querySelector('#heartChartArea'),
+  heartChartEmpty: document.querySelector('#heartChartEmpty'),
   powerZone: document.querySelector('#powerZone'),
   chartAverage: document.querySelector('#chartAverage'),
   powerChartLine: document.querySelector('#powerChartLine'),
@@ -89,6 +92,8 @@ let heartRateCharacteristic = null;
 let heartRateReconnectCancelled = false;
 let lastHeartRatePacketAt = 0;
 let lastChartRenderAt = 0;
+let lastHeartChartRenderAt = 0;
+let ftmsPowerEnabled = false;
 
 const HISTORY_URL = './data/training-history.json';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -101,12 +106,23 @@ const crankState = {
 const session = {
   startedAt: null,
   powerSamples: [],
+  power3sSamples: [],
   powerSum: 0,
   powerCount: 0,
   maxPower: 0,
   currentPower: null,
   currentCadence: null,
   currentHeartRate: null,
+  heartRateSamples: [],
+  heartChartMin: null,
+  heartChartMax: null,
+  distanceMeters: 0,
+  distanceMode: null,
+  currentSpeedKph: null,
+  previousSpeedKph: null,
+  lastSpeedAt: null,
+  ftmsLastRawMeters: null,
+  ftmsLastAt: null,
 };
 
 let trainingReference = {
@@ -366,6 +382,138 @@ function updatePowerChart(force = false) {
   }
 }
 
+function updateHeartRateChart(force = false, connected = true) {
+  const now = Date.now();
+  if (!force && now - lastHeartChartRenderAt < 900) return;
+  lastHeartChartRenderAt = now;
+  session.heartRateSamples = session.heartRateSamples.filter(sample => now - sample.time <= 600000);
+
+  if (!connected || !session.heartRateSamples.length) {
+    els.heartChartLine?.setAttribute('d', '');
+    els.heartChartArea?.setAttribute('d', '');
+    if (els.heartChartAverage) els.heartChartAverage.textContent = '--';
+    if (els.heartChartEmpty) els.heartChartEmpty.hidden = false;
+    return;
+  }
+
+  const samples = session.heartRateSamples;
+  const values = samples.map(sample => sample.heartRate);
+  const average = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const center = (rawMin + rawMax) / 2;
+  const halfSpan = Math.max(10, (rawMax - rawMin) / 2 + 5);
+  const targetMin = Math.max(30, Math.floor((center - halfSpan) / 5) * 5);
+  const targetMax = Math.min(240, Math.ceil((center + halfSpan) / 5) * 5);
+
+  session.heartChartMin = session.heartChartMin === null
+    ? targetMin
+    : targetMin < session.heartChartMin
+      ? targetMin
+      : session.heartChartMin + ((targetMin - session.heartChartMin) * 0.08);
+  session.heartChartMax = session.heartChartMax === null
+    ? targetMax
+    : targetMax > session.heartChartMax
+      ? targetMax
+      : session.heartChartMax + ((targetMax - session.heartChartMax) * 0.08);
+
+  const width = 300;
+  const height = 88;
+  const firstTime = Math.max(now - 600000, samples[0].time);
+  const span = Math.max(1, now - firstTime);
+  const ySpan = Math.max(20, session.heartChartMax - session.heartChartMin);
+  const points = samples.map(sample => {
+    const x = ((sample.time - firstTime) / span) * width;
+    const ratio = (sample.heartRate - session.heartChartMin) / ySpan;
+    const y = height - 6 - (Math.max(0, Math.min(1, ratio)) * (height - 12));
+    return [x, y];
+  });
+  const line = points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const area = `${line} L${points.at(-1)[0].toFixed(1)},${height} L${points[0][0].toFixed(1)},${height} Z`;
+  els.heartChartLine?.setAttribute('d', line);
+  els.heartChartArea?.setAttribute('d', area);
+  if (els.heartChartAverage) els.heartChartAverage.textContent = String(average);
+  if (els.heartChartEmpty) els.heartChartEmpty.hidden = true;
+}
+
+function renderDistance() {
+  if (!els.distanceValue) return;
+  const kilometres = Math.max(0, session.distanceMeters) / 1000;
+  els.distanceValue.textContent = `${kilometres.toLocaleString('da-DK', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} km`;
+}
+
+function updateSpeedDistance(speedKph, now = Date.now()) {
+  if (!Number.isFinite(speedKph) || speedKph < 0 || speedKph > 200) return;
+  ensureSessionStarted(session.currentPower, session.currentCadence, speedKph);
+
+  if (session.distanceMode !== 'ftms' && session.lastSpeedAt !== null) {
+    const elapsedMs = now - session.lastSpeedAt;
+    if (elapsedMs > 0 && elapsedMs <= 10000) {
+      const previous = Number.isFinite(session.previousSpeedKph) ? session.previousSpeedKph : speedKph;
+      const averageMetresPerSecond = ((previous + speedKph) / 2) / 3.6;
+      session.distanceMeters += Math.max(0, averageMetresPerSecond * (elapsedMs / 1000));
+    }
+  }
+
+  if (session.distanceMode === null) session.distanceMode = 'speed';
+  session.previousSpeedKph = speedKph;
+  session.currentSpeedKph = speedKph;
+  session.lastSpeedAt = now;
+  renderDistance();
+}
+
+function updateFtmsDistance(rawMeters, now = Date.now(), speedKph = null) {
+  if (!Number.isFinite(rawMeters) || rawMeters < 0) return;
+  ensureSessionStarted(session.currentPower, session.currentCadence, speedKph);
+
+  if (session.ftmsLastRawMeters !== null && session.ftmsLastAt !== null) {
+    const elapsedMs = now - session.ftmsLastAt;
+    const delta = rawMeters - session.ftmsLastRawMeters;
+    const referenceSpeed = Number.isFinite(speedKph) ? speedKph : session.currentSpeedKph;
+    const expectedMetres = Number.isFinite(referenceSpeed) && elapsedMs > 0
+      ? (referenceSpeed / 3.6) * (elapsedMs / 1000)
+      : 0;
+    const maximumPlausibleDelta = Math.max(30, (expectedMetres * 3) + 20);
+
+    if (elapsedMs > 0 && elapsedMs <= 15000 && delta >= 0 && delta <= maximumPlausibleDelta) {
+      session.distanceMeters += delta;
+    }
+  }
+
+  session.distanceMode = 'ftms';
+  session.ftmsLastRawMeters = rawMeters;
+  session.ftmsLastAt = now;
+  if (Number.isFinite(speedKph)) {
+    session.previousSpeedKph = speedKph;
+    session.currentSpeedKph = speedKph;
+  }
+  session.lastSpeedAt = now;
+  renderDistance();
+}
+
+function resetPowerSmoothing() {
+  session.power3sSamples = [];
+  session.currentPower = null;
+  els.powerValue.textContent = '--';
+}
+
+function prepareForTrainerReconnect() {
+  resetPowerSmoothing();
+  session.currentCadence = null;
+  session.currentSpeedKph = null;
+  session.previousSpeedKph = null;
+  session.lastSpeedAt = null;
+  session.ftmsLastRawMeters = null;
+  session.ftmsLastAt = null;
+  els.cadenceValue.textContent = '--';
+  setRing(els.cadenceRing, 0, 120);
+  els.powerHint.textContent = 'Venter på data';
+  els.powerZone.textContent = 'Venter på data';
+}
+
 function setStatus(state, title, subtitle) {
   els.statusDot.className = `status-dot ${state}`;
   els.statusText.textContent = title;
@@ -376,16 +524,16 @@ function setStatus(state, title, subtitle) {
   els.connectButton.disabled = state === 'connecting';
 }
 
-function ensureSessionStarted(power, cadence) {
-  if (!session.startedAt && ((power ?? 0) > 0 || (cadence ?? 0) > 0)) {
+function ensureSessionStarted(power, cadence, speed = null) {
+  if (!session.startedAt && ((power ?? 0) > 0 || (cadence ?? 0) > 0 || (speed ?? 0) > 0)) {
     session.startedAt = Date.now();
     log('Turdata startede ved første registrerede bevægelse.');
   }
 }
 
 function updatePower(power) {
-  if (!Number.isFinite(power)) return;
-  const cleanPower = Math.max(0, Math.round(power));
+  if (!Number.isFinite(power) || power < 0) return;
+  const cleanPower = Math.round(power);
   const now = Date.now();
 
   session.currentPower = cleanPower;
@@ -393,22 +541,21 @@ function updatePower(power) {
 
   session.powerSamples.push({ time: now, power: cleanPower });
   session.powerSamples = session.powerSamples.filter(sample => now - sample.time <= 600000);
+  session.power3sSamples.push({ time: now, power: cleanPower });
+  session.power3sSamples = session.power3sSamples.filter(sample => now - sample.time <= 3000);
   session.powerSum += cleanPower;
   session.powerCount += 1;
   session.maxPower = Math.max(session.maxPower, cleanPower);
 
-  const last3s = session.powerSamples.filter(sample => now - sample.time <= 3000);
-  const average3s = last3s.length
-    ? Math.round(last3s.reduce((sum, sample) => sum + sample.power, 0) / last3s.length)
+  const average3s = session.power3sSamples.length
+    ? Math.round(session.power3sSamples.reduce((sum, sample) => sum + sample.power, 0) / session.power3sSamples.length)
     : cleanPower;
 
-  els.powerValue.textContent = String(cleanPower);
-  els.power3s.textContent = String(average3s);
+  els.powerValue.textContent = String(average3s);
   els.averagePower.textContent = String(Math.round(session.powerSum / session.powerCount));
   els.maxPower.textContent = String(session.maxPower);
-  setRing(els.powerRing, cleanPower, 500);
-  els.powerHint.textContent = cleanPower === 0 ? 'Ingen belastning registreret' : powerBand(cleanPower);
-  els.powerZone.textContent = powerBand(cleanPower);
+  els.powerHint.textContent = average3s === 0 ? 'Ingen belastning registreret' : powerBand(average3s);
+  els.powerZone.textContent = powerBand(average3s);
   updateComparisons();
   updatePowerChart();
 }
@@ -424,13 +571,17 @@ function updateCadence(cadence) {
 }
 
 function updateHeartRate(heartRate) {
-  if (!Number.isFinite(heartRate)) return;
-  const cleanHeartRate = Math.max(0, Math.min(240, Math.round(heartRate)));
+  if (!Number.isFinite(heartRate) || heartRate <= 0) return;
+  const cleanHeartRate = Math.min(240, Math.round(heartRate));
+  const now = Date.now();
   session.currentHeartRate = cleanHeartRate;
-  lastHeartRatePacketAt = Date.now();
+  lastHeartRatePacketAt = now;
+  session.heartRateSamples.push({ time: now, heartRate: cleanHeartRate });
+  session.heartRateSamples = session.heartRateSamples.filter(sample => now - sample.time <= 600000);
   els.heartRateValue.textContent = String(cleanHeartRate);
   els.heartRateState.textContent = heartRateDevice?.name || 'Pulsmåler forbundet';
   setRing(els.heartRateRing, cleanHeartRate, 200);
+  updateHeartRateChart();
 }
 
 function powerBand(power) {
@@ -465,37 +616,49 @@ function updateElapsed() {
     els.heartRateValue.textContent = '--';
     els.heartRateState.textContent = heartRateDevice?.gatt?.connected ? 'Venter på pulsdata' : 'Pulsmåler ikke forbundet';
     setRing(els.heartRateRing, 0, 200);
+    updateHeartRateChart(true, false);
   }
 }
 
 function resetSession(showMessage = true) {
   session.startedAt = null;
   session.powerSamples = [];
+  session.power3sSamples = [];
   session.powerSum = 0;
   session.powerCount = 0;
   session.maxPower = 0;
   session.currentPower = null;
   session.currentCadence = null;
   session.currentHeartRate = null;
+  session.heartRateSamples = [];
+  session.heartChartMin = null;
+  session.heartChartMax = null;
+  session.distanceMeters = 0;
+  session.distanceMode = null;
+  session.currentSpeedKph = null;
+  session.previousSpeedKph = null;
+  session.lastSpeedAt = null;
+  session.ftmsLastRawMeters = null;
+  session.ftmsLastAt = null;
   crankState.power.revolutions = null;
   crankState.power.eventTime = null;
   crankState.csc.revolutions = null;
   crankState.csc.eventTime = null;
   els.powerValue.textContent = '--';
   els.cadenceValue.textContent = '--';
-  els.power3s.textContent = '--';
   els.averagePower.textContent = '--';
   els.maxPower.textContent = '--';
   els.elapsedTime.textContent = '00:00';
   els.powerHint.textContent = 'Venter på data';
   els.powerZone.textContent = 'Venter på data';
   els.heartRateValue.textContent = '--';
+  renderDistance();
   setRing(els.cadenceRing, 0, 120);
   setRing(els.heartRateRing, 0, 200);
-  setRing(els.powerRing, 0, 500);
   if (els.timeProgress) els.timeProgress.style.width = '0%';
   updateComparisons();
   updatePowerChart(true);
+  updateHeartRateChart(true, false);
   if (showMessage) showToast('Turdata er nulstillet');
 }
 
@@ -569,33 +732,48 @@ function handleIndoorBikeData(event) {
 
   const flags = view.getUint16(0, true);
   let offset = 2;
+  let instantaneousSpeed = null;
+  let totalDistance = null;
+  let instantaneousCadence = null;
+  let instantaneousPower = null;
+  let heartRate = null;
+
+  const readField = (size, reader) => {
+    const value = offset + size <= view.byteLength ? reader(offset) : null;
+    offset += size;
+    return value;
+  };
 
   // Bit 0 is "More Data". Instantaneous speed is present when it is NOT set.
-  if (!(flags & (1 << 0))) offset += 2;
-  if (flags & (1 << 1)) offset += 2; // Average speed
+  if (!(flags & (1 << 0))) instantaneousSpeed = readField(2, position => view.getUint16(position, true) / 100);
+  if (flags & (1 << 1)) readField(2, () => null); // Average speed
 
   if (flags & (1 << 2)) {
-    if (offset + 2 <= view.byteLength) updateCadence(view.getUint16(offset, true) / 2);
-    offset += 2;
+    instantaneousCadence = readField(2, position => view.getUint16(position, true) / 2);
   }
-  if (flags & (1 << 3)) offset += 2; // Average cadence
-  if (flags & (1 << 4)) offset += 3; // Total distance
-  if (flags & (1 << 5)) offset += 2; // Resistance level
+  if (flags & (1 << 3)) readField(2, () => null); // Average cadence
+  if (flags & (1 << 4)) totalDistance = readField(3, position => readUint24LE(view, position));
+  if (flags & (1 << 5)) readField(2, () => null); // Resistance level
 
   if (flags & (1 << 6)) {
-    if (offset + 2 <= view.byteLength) updatePower(view.getInt16(offset, true));
-    offset += 2;
+    instantaneousPower = readField(2, position => view.getInt16(position, true));
   }
 
-  if (flags & (1 << 7)) offset += 2; // Average power
-  if (flags & (1 << 8)) offset += 5; // Expended energy
+  if (flags & (1 << 7)) readField(2, () => null); // Average power
+  if (flags & (1 << 8)) readField(5, () => null); // Expended energy
   if (flags & (1 << 9)) {
-    if (offset + 1 <= view.byteLength) updateHeartRate(view.getUint8(offset));
-    offset += 1;
-  } // Heart rate
-  if (flags & (1 << 10)) offset += 1; // MET
-  if (flags & (1 << 11)) offset += 2; // Elapsed time
-  if (flags & (1 << 12)) offset += 2; // Remaining time
+    heartRate = readField(1, position => view.getUint8(position));
+  }
+  if (flags & (1 << 10)) readField(1, () => null); // MET
+  if (flags & (1 << 11)) readField(2, () => null); // Elapsed time
+  if (flags & (1 << 12)) readField(2, () => null); // Remaining time
+
+  const now = Date.now();
+  if (totalDistance !== null) updateFtmsDistance(totalDistance, now, instantaneousSpeed);
+  else if (instantaneousSpeed !== null) updateSpeedDistance(instantaneousSpeed, now);
+  if (instantaneousCadence !== null) updateCadence(instantaneousCadence);
+  if (ftmsPowerEnabled && instantaneousPower !== null) updatePower(instantaneousPower);
+  if (heartRate !== null) updateHeartRate(heartRate);
 }
 
 async function subscribe(service, characteristicUuid, handler, label) {
@@ -610,6 +788,7 @@ async function setupDataServices(server) {
   subscribedCharacteristics = [];
   const sources = [];
   let hasPower = false;
+  ftmsPowerEnabled = false;
 
   try {
     const powerService = await server.getPrimaryService(UUID.cyclingPowerService);
@@ -628,15 +807,15 @@ async function setupDataServices(server) {
     log(`CSC ikke tilgængelig: ${error.message}`);
   }
 
-  if (!hasPower) {
-    try {
-      const ftmsService = await server.getPrimaryService(UUID.fitnessMachineService);
-      await subscribe(ftmsService, UUID.indoorBikeData, handleIndoorBikeData, 'FTMS Indoor Bike Data');
-      sources.push('FTMS');
-      hasPower = true;
-    } catch (error) {
-      log(`FTMS ikke tilgængelig: ${error.message}`);
-    }
+  try {
+    const ftmsService = await server.getPrimaryService(UUID.fitnessMachineService);
+    ftmsPowerEnabled = !hasPower;
+    await subscribe(ftmsService, UUID.indoorBikeData, handleIndoorBikeData, 'FTMS Indoor Bike Data');
+    sources.push('FTMS');
+    if (ftmsPowerEnabled) hasPower = true;
+  } catch (error) {
+    ftmsPowerEnabled = false;
+    log(`FTMS ikke tilgængelig: ${error.message}`);
   }
 
   if (!hasPower) {
@@ -690,6 +869,7 @@ async function connectGatt() {
 
 async function handleDisconnected() {
   if (reconnectCancelled || !bluetoothDevice) return;
+  prepareForTrainerReconnect();
   setStatus('connecting', 'Forbindelsen blev afbrudt', 'Forsøger automatisk igen');
   log('Bluetooth-forbindelsen blev afbrudt.');
 
@@ -712,6 +892,7 @@ async function handleDisconnected() {
 async function disconnect() {
   reconnectCancelled = true;
   stopDemo();
+  prepareForTrainerReconnect();
 
   for (const item of subscribedCharacteristics) {
     try {
@@ -781,6 +962,10 @@ async function handleHeartRateDisconnected() {
   els.heartRateConnectButton.hidden = false;
   els.heartRateDisconnectButton.hidden = true;
   els.heartRateState.textContent = 'Pulsmåler ikke forbundet';
+  session.currentHeartRate = null;
+  els.heartRateValue.textContent = '--';
+  setRing(els.heartRateRing, 0, 200);
+  updateHeartRateChart(true, false);
 }
 
 async function disconnectHeartRate() {
@@ -799,6 +984,7 @@ async function disconnectHeartRate() {
   els.heartRateConnectButton.hidden = false;
   els.heartRateDisconnectButton.hidden = true;
   setRing(els.heartRateRing, 0, 200);
+  updateHeartRateChart(true, false);
   log('Pulsmåleren blev afbrudt manuelt.');
 }
 

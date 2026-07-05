@@ -47,7 +47,8 @@
           <span id="dataSource" class="data-source">Datakilde: --</span>
         </div>
 
-        <div class="power-value" aria-label="Aktuel effekt">
+        <span class="power-smoothing-label">Effekt &middot; 3 sek</span>
+        <div class="power-value" aria-label="3-sekunders effekt">
           <span id="powerValue">--</span><span class="power-unit">W</span>
         </div>
 
@@ -85,12 +86,24 @@
           <div class="metric-ring pulse-ring" aria-hidden="true"><span id="heartRateRing"></span></div>
         </article>
 
-        <article class="panel metric-panel smooth-power-panel">
-          <div>
-            <span class="metric-label">Effekt · 3 sek.</span>
-            <div class="metric-value"><span id="power3s">--</span><small>W</small></div>
+        <article class="panel heart-chart-panel">
+          <div class="heart-chart-heading">
+            <span class="metric-label">Puls &middot; seneste 10 min.</span>
+            <strong>Gns. <span id="heartChartAverage">--</span> bpm</strong>
           </div>
-          <div class="metric-ring power-ring" aria-hidden="true"><span id="powerRing"></span></div>
+          <div class="heart-chart-wrap">
+            <svg class="heart-chart" viewBox="0 0 300 88" preserveAspectRatio="none" role="img" aria-label="Pulsgraf for de seneste 10 minutter">
+              <defs>
+                <linearGradient id="heartChartFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#e11d48" stop-opacity=".16"/>
+                  <stop offset="100%" stop-color="#e11d48" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path id="heartChartArea" class="heart-chart-area" d=""/>
+              <path id="heartChartLine" class="heart-chart-line" d=""/>
+            </svg>
+            <span id="heartChartEmpty" class="heart-chart-empty">Forbind pulsmåler for live-graf</span>
+          </div>
         </article>
       </aside>
 
@@ -126,6 +139,7 @@
         <div class="time-stats">
           <div><span>Gennemsnit</span><strong><span id="averagePower">--</span> W</strong></div>
           <div><span>Maks.</span><strong><span id="maxPower">--</span> W</strong></div>
+          <div><span>Distance</span><strong id="distanceValue">0,00 km</strong></div>
         </div>
       </article>
 

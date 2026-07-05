@@ -172,6 +172,18 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 }
 .data-source { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .69rem; }
 .power-value { display: flex; align-items: baseline; justify-content: center; margin-top: 8px; line-height: .78; }
+.power-smoothing-label {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 850;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
 .power-value #powerValue {
   font-size: clamp(7rem, 15vw, 15rem);
   font-weight: 850;
@@ -225,6 +237,39 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .pulse-ring { --ring-color: var(--pink); }
 .power-ring { --ring-color: var(--accent); }
 
+.heart-chart-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px 20px 13px;
+  overflow: hidden;
+}
+.heart-chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.heart-chart-heading strong { color: var(--pink); font-size: .72rem; white-space: nowrap; }
+.heart-chart-wrap { position: relative; min-height: 58px; flex: 1; }
+.heart-chart { display: block; width: 100%; height: 100%; min-height: 58px; overflow: visible; }
+.heart-chart-line {
+  fill: none;
+  stroke: var(--pink);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.heart-chart-area { fill: url(#heartChartFill); }
+.heart-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted-2);
+  font-size: .67rem;
+  text-align: center;
+}
+
 .chart-panel { position: relative; overflow: hidden; padding: 20px 22px 14px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .panel-heading strong { display: block; margin-top: 6px; color: var(--accent); font-size: .79rem; }
@@ -241,7 +286,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .time-panel > strong { margin: 14px 0 13px; font-size: clamp(2.7rem, 5.3vw, 5.4rem); line-height: .9; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
 .time-progress { height: 6px; overflow: hidden; border-radius: 999px; background: rgba(126, 151, 138, .18); }
 .time-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .5s linear; }
-.time-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px; }
+.time-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 15px; }
 .time-stats div { padding-top: 10px; border-top: 1px solid var(--border); }
 .time-stats span, .time-stats strong { display: block; }
 .time-stats span { color: var(--muted); font-size: .67rem; }
@@ -351,6 +396,8 @@ h2 { margin-top: 2px; font-size: 1.7rem; }
   .power-value #powerValue { font-size: clamp(7.5rem, 42vw, 12rem); }
   .metric-stack { grid-template-columns: repeat(3, 1fr); grid-template-rows: auto; }
   .metric-panel { min-width: 0; padding: 16px 12px; }
+  .heart-chart-panel { min-width: 0; padding: 14px 12px 11px; }
+  .heart-chart-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
   .metric-value span { font-size: clamp(2rem, 9vw, 3.2rem); }
   .metric-ring { display: none; }
   .metric-state { display: none; }
@@ -365,11 +412,13 @@ h2 { margin-top: 2px; font-size: 1.7rem; }
   .power-topline { align-items: flex-start; flex-direction: column; }
   .data-source { max-width: 100%; }
   .power-value { margin-top: 44px; }
+  .power-smoothing-label { top: 105px; }
   .comparison-card { width: 100%; }
   .comparison-values > div { padding-inline: 8px; }
   .comparison-values strong { font-size: 1.65rem; }
   .metric-stack { grid-template-columns: 1fr; }
   .metric-panel { min-height: 124px; }
+  .heart-chart-panel { min-height: 124px; }
   .metric-ring { display: grid; }
   .spotify-now-playing { grid-template-columns: 66px minmax(0, 1fr); }
   .spotify-cover-link, .spotify-cover { width: 66px; height: 66px; }
