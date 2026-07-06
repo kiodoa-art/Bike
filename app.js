@@ -109,6 +109,7 @@ const RIDE_FILE_VERSION = 1;
 const RIDE_DB_NAME = 'kickr-live-storage';
 const RIDE_DB_STORE = 'handles';
 const RIDE_DIRECTORY_KEY = 'ride-directory';
+const BLUETOOTH_DEVICE_CACHE_KEY = 'kickr-live-bluetooth-devices-v1';
 
 const HISTORY_URL = './data/training-history.json';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -543,6 +544,79 @@ function setHeartRateStatus(state, title, subtitle) {
   els.heartStatusDot.className = `status-dot ${state}`;
   els.heartRateState.textContent = title;
   els.heartRateConnectionText.textContent = subtitle;
+}
+
+function readBluetoothDeviceCache() {
+  try {
+    const raw = localStorage.getItem(BLUETOOTH_DEVICE_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    log(`Kunne ikke læse gemt Bluetooth-udstyr: ${error.message}`);
+    return {};
+  }
+}
+
+function writeBluetoothDeviceCache(cache) {
+  try {
+    localStorage.setItem(BLUETOOTH_DEVICE_CACHE_KEY, JSON.stringify(cache));
+  } catch (error) {
+    log(`Kunne ikke gemme Bluetooth-udstyr: ${error.message}`);
+  }
+}
+
+function rememberBluetoothDevice(type, device) {
+  if (!device?.id) return;
+  const cache = readBluetoothDeviceCache();
+  cache[type] = {
+    id: device.id,
+    name: device.name || '',
+    lastConnected: new Date().toISOString(),
+  };
+  writeBluetoothDeviceCache(cache);
+}
+
+function normalizeDeviceName(device) {
+  return String(device?.name || '').trim().toLowerCase();
+}
+
+function deviceMatchesSavedDevice(device, saved) {
+  if (!device || !saved) return false;
+  return Boolean((saved.id && device.id === saved.id) || (saved.name && device.name === saved.name));
+}
+
+function isLikelyKickrDevice(device) {
+  const name = normalizeDeviceName(device);
+  if (!name) return false;
+  if (name.includes('kickr')) return true;
+  return name.includes('wahoo') && !name.includes('tickr');
+}
+
+function isLikelyHeartRateDevice(device) {
+  const name = normalizeDeviceName(device);
+  if (!name || name.includes('kickr')) return false;
+  return /(^|[^a-z])(hr|bpm)([^a-z]|$)|heart|pulse|puls|pulsm|tickr|polar|coospo|igpsport|hr70/.test(name);
+}
+
+function findRememberedDevice(devices, type) {
+  const cache = readBluetoothDeviceCache();
+  const saved = cache[type];
+  const savedMatch = devices.find(device => deviceMatchesSavedDevice(device, saved));
+  if (savedMatch) return savedMatch;
+
+  if (type === 'kickr') return devices.find(isLikelyKickrDevice) || null;
+  if (type === 'heart_rate') return devices.find(isLikelyHeartRateDevice) || null;
+  return null;
+}
+
+function addBluetoothDisconnectListener(device, handler) {
+  if (!device || typeof device.addEventListener !== 'function') return;
+  device.removeEventListener('gattserverdisconnected', handler);
+  device.addEventListener('gattserverdisconnected', handler);
+}
+
+function hasActiveBluetoothDevice(device) {
+  return Boolean(device?.gatt?.connected);
 }
 
 function ensureSessionStarted(power, cadence, speed = null) {
@@ -1185,7 +1259,7 @@ async function connectToSelectedDevice() {
     ],
   });
 
-  bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnected);
+  addBluetoothDisconnectListener(bluetoothDevice, handleDisconnected);
   await connectGatt();
 }
 
@@ -1199,6 +1273,7 @@ async function connectGatt() {
 
   const sources = await setupDataServices(server);
   setStatus('connected', 'Forbundet', bluetoothDevice.name || 'Wahoo KICKR');
+  rememberBluetoothDevice('kickr', bluetoothDevice);
   log(`Forbundet. Datakilder: ${sources.join(', ')}.`);
   showToast('KICKR er forbundet');
   await requestWakeLock();
@@ -1264,7 +1339,7 @@ async function connectHeartRate() {
     filters: [{ services: [UUID.heartRateService] }],
     optionalServices: [UUID.heartRateService],
   });
-  heartRateDevice.addEventListener('gattserverdisconnected', handleHeartRateDisconnected);
+  addBluetoothDisconnectListener(heartRateDevice, handleHeartRateDisconnected);
   await connectHeartRateGatt();
 }
 
@@ -1277,6 +1352,7 @@ async function connectHeartRateGatt() {
   heartRateCharacteristic.addEventListener('characteristicvaluechanged', handleHeartRateMeasurement);
   await heartRateCharacteristic.startNotifications();
   setHeartRateStatus('connected', heartRateDevice.name || 'Pulsmåler', 'Forbundet');
+  rememberBluetoothDevice('heart_rate', heartRateDevice);
   els.heartRateConnectButton.hidden = true;
   els.heartRateDisconnectButton.hidden = false;
   log(`Pulsmåler forbundet: ${heartRateDevice.name || 'ukendt enhed'}.`);
@@ -1323,6 +1399,89 @@ async function disconnectHeartRate() {
   setRing(els.heartRateRing, 0, 200);
   updateHeartRateChart(true, false);
   log('Pulsmåleren blev afbrudt manuelt.');
+}
+
+async function reconnectTrainerFromRememberedDevice(device) {
+  if (!device || hasActiveBluetoothDevice(bluetoothDevice)) return false;
+  bluetoothDevice = device;
+  reconnectCancelled = false;
+  addBluetoothDisconnectListener(bluetoothDevice, handleDisconnected);
+  prepareForTrainerReconnect();
+  setStatus('connecting', bluetoothDevice.name || 'Wahoo KICKR', 'Forbinder automatisk');
+  log(`Forsøger automatisk forbindelse til KICKR: ${bluetoothDevice.name || 'ukendt enhed'}.`);
+  await connectGatt();
+  return true;
+}
+
+async function reconnectHeartRateFromRememberedDevice(device) {
+  if (!device || hasActiveBluetoothDevice(heartRateDevice)) return false;
+  heartRateDevice = device;
+  heartRateReconnectCancelled = false;
+  addBluetoothDisconnectListener(heartRateDevice, handleHeartRateDisconnected);
+  els.heartRateConnectButton.disabled = true;
+  setHeartRateStatus('connecting', heartRateDevice.name || 'Pulsmåler', 'Forbinder automatisk');
+  log(`Forsøger automatisk forbindelse til puls: ${heartRateDevice.name || 'ukendt enhed'}.`);
+  try {
+    await connectHeartRateGatt();
+    return true;
+  } finally {
+    els.heartRateConnectButton.disabled = false;
+  }
+}
+
+async function autoReconnectBluetoothDevices() {
+  if (!navigator.bluetooth) return;
+
+  if (typeof navigator.bluetooth.getDevices !== 'function') {
+    log('Automatisk Bluetooth-genforbindelse understøttes ikke af denne browser.');
+    return;
+  }
+
+  let devices = [];
+  try {
+    setStatus('connecting', 'Tjekker KICKR', 'Leder efter tidligere godkendt udstyr');
+    setHeartRateStatus('connecting', 'Pulsmåler', 'Tjekker tidligere godkendelse');
+    devices = await navigator.bluetooth.getDevices();
+  } catch (error) {
+    log(`Kunne ikke hente tidligere godkendt Bluetooth-udstyr: ${error.message}`);
+    setStatus('disconnected', 'Ikke forbundet', 'Tryk på Forbind KICKR');
+    setHeartRateStatus('disconnected', 'Pulsmåler', 'Ikke forbundet');
+    return;
+  }
+
+  if (!devices.length) {
+    log('Ingen tidligere godkendte Bluetooth-enheder fundet.');
+    setStatus('disconnected', 'Ikke forbundet', 'Tryk på Forbind KICKR');
+    setHeartRateStatus('disconnected', 'Pulsmåler', 'Ikke forbundet');
+    return;
+  }
+
+  log(`Fandt ${devices.length} tidligere godkendt(e) Bluetooth-enhed(er).`);
+
+  const rememberedKickr = findRememberedDevice(devices, 'kickr');
+  const rememberedHeartRate = findRememberedDevice(devices, 'heart_rate');
+
+  if (rememberedKickr) {
+    try {
+      await reconnectTrainerFromRememberedDevice(rememberedKickr);
+    } catch (error) {
+      log(`Automatisk KICKR-forbindelse mislykkedes: ${error.message}`);
+      setStatus('disconnected', 'KICKR ikke forbundet', 'Tryk på Forbind KICKR');
+    }
+  } else {
+    setStatus('disconnected', 'Ikke forbundet', 'Tryk på Forbind KICKR');
+  }
+
+  if (rememberedHeartRate && rememberedHeartRate.id !== rememberedKickr?.id) {
+    try {
+      await reconnectHeartRateFromRememberedDevice(rememberedHeartRate);
+    } catch (error) {
+      log(`Automatisk puls-forbindelse mislykkedes: ${error.message}`);
+      setHeartRateStatus('disconnected', 'Pulsmåler', 'Tryk på Forbind puls');
+    }
+  } else {
+    setHeartRateStatus('disconnected', 'Pulsmåler', 'Tryk på Forbind puls');
+  }
 }
 
 async function requestWakeLock() {
@@ -1536,12 +1695,20 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+const startupParams = new URLSearchParams(window.location.search);
+const shouldStartDemo = startupParams.get('demo') === '1';
+
 if (!navigator.bluetooth) {
   setStatus('disconnected', 'Web Bluetooth mangler', 'Åbn siden i Microsoft Edge eller Google Chrome');
   els.connectButton.disabled = true;
+  els.heartRateConnectButton.disabled = true;
   log('Browseren understøtter ikke navigator.bluetooth.');
+} else if (!shouldStartDemo) {
+  window.setTimeout(() => {
+    autoReconnectBluetoothDevices().catch(error => log(`Auto-genforbindelse stoppede: ${error.message}`));
+  }, 500);
 }
 
-if (new URLSearchParams(window.location.search).get('demo') === '1') {
+if (shouldStartDemo) {
   window.setTimeout(startDemo, 250);
 }

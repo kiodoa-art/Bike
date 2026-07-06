@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kickr-live-v18-ride-recording';
+const CACHE_NAME = 'kickr-live-v19-auto-bluetooth-reconnect';
 const HISTORY_PATH = './data/training-history.json';
 const ASSETS = [
   './',
